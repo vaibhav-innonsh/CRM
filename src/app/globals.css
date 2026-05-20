@@ -24,3 +24,53 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* --- PROFESSIONAL PRINT OVERRIDES --- */
+@media print {
+  /* Hide the entire background layout, sidebar, and dashboard */
+  body * {
+    visibility: hidden;
+  }
+  
+  /* Make only the invoice container paper content visible */
+  .printable-overlay,
+  .printable-overlay * {
+    visibility: visible;
+  }
+  
+  .printable-overlay {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background: white !important;
+  }
+
+  .printable-hidden {
+    display: none !important;
+  }
+
+  .printable-paper {
+    border: none !important;
+    box-shadow: none !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .printable-content {
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+
+  #print-area {
+    border: none !important;
+    padding: 0 !important;
+  }
+}
