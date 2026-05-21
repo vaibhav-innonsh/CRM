@@ -35,51 +35,73 @@ export async function GET(req) {
     '%%EOF'
   );
 
-  const fallbackResponse = new Response(pdfBuffer, {
-    headers: {
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': 'inline; filename="Proposal_Tracked.pdf"',
-    },
-  });
+  const getFallbackResponse = (isInline) => {
+    return new Response(pdfBuffer, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `${isInline ? 'inline' : 'attachment'}; filename="Proposal_Tracked.pdf"`,
+      },
+    });
+  };
 
   try {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
+    const download = searchParams.get('download');
+    const inline = searchParams.get('inline');
 
     if (!id) {
-      return fallbackResponse;
+      return getFallbackResponse(inline === 'true');
     }
 
     await connectToDatabase();
 
     const email = await Email.findById(id);
     if (!email) {
-      return fallbackResponse;
+      return getFallbackResponse(inline === 'true');
     }
 
-    // Increment download statistics
+    // A. Sub-requests to stream the file (either inline preview or direct attachment download)
+    if (download === 'true' || inline === 'true') {
+      if (email.proposalFileData) {
+        const base64Data = email.proposalFileData.includes(';base64,')
+          ? email.proposalFileData.split(';base64,')[1]
+          : email.proposalFileData;
+
+        const fileBuffer = Buffer.from(base64Data, 'base64');
+        const filename = email.proposalFile || 'Attachment_Tracked.pdf';
+        const mimeType = email.proposalFileMimeType || 'application/octet-stream';
+
+        return new Response(fileBuffer, {
+          headers: {
+            'Content-Type': mimeType,
+            'Content-Disposition': `${inline === 'true' ? 'inline' : 'attachment'}; filename="${filename}"`,
+            'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+          },
+        });
+      }
+      return getFallbackResponse(inline === 'true');
+    }
+
+    // B. Primary Request: Client clicked the link from the email
+    // 1. Log tracking analytics ONLY ONCE to prevent double counting
     email.downloadsCount += 1;
     email.downloadedAt.push(new Date());
     await email.save();
 
-    // Trigger Lead Specific Automation
+    // 2. Trigger Lead Specific Automation & Notifications
     if (email.leadId) {
       const lead = await Lead.findById(email.leadId);
       if (lead) {
-        // Boost Lead Score by +20 & update status to Qualified
         lead.score = (lead.score || 0) + 20;
         lead.status = 'Qualified';
-
-        // Add follow-up timeline action
         lead.notes.push({
           text: `📥 PDF Proposal Downloaded: Client downloaded attached file [${email.proposalFile || 'Proposal.pdf'}] (Lead Score: ${lead.score}, Status auto-shifted to Qualified)`,
           createdBy: email.sentBy,
           createdByName: 'Proposal Tracker Engine'
         });
-
         await lead.save();
 
-        // Trigger System Notification Alert for Sales Rep
         const targetRecipient = lead.assignedTo || email.sentBy;
         await Notification.create({
           recipientId: targetRecipient,
@@ -112,27 +134,151 @@ export async function GET(req) {
       }
     }
 
-    if (email.proposalFileData) {
-      const base64Data = email.proposalFileData.includes(';base64,')
-        ? email.proposalFileData.split(';base64,')[1]
-        : email.proposalFileData;
-
-      const fileBuffer = Buffer.from(base64Data, 'base64');
-      const filename = email.proposalFile || 'Attachment_Tracked.pdf';
-      const mimeType = email.proposalFileMimeType || 'application/octet-stream';
-
-      return new Response(fileBuffer, {
-        headers: {
-          'Content-Type': mimeType,
-          'Content-Disposition': `inline; filename="${filename}"`,
-          'Cache-Control': 'no-store, no-cache, must-revalidate, private',
-        },
-      });
+    // 3. Render a beautiful, premium, branded Zoho-style Proposal Landing Portal
+    const filename = email.proposalFile || 'Proposal.pdf';
+    const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Innonsh CRM - View Proposal</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #0f172a;
+      color: #f1f5f9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
     }
+    .header {
+      background-color: #1e293b;
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #10b981;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+      z-index: 20;
+    }
+    .logo {
+      font-size: 18px;
+      font-weight: bold;
+      color: #ffffff;
+      letter-spacing: -0.5px;
+    }
+    .logo span {
+      color: #10b981;
+      font-weight: normal;
+      margin-left: 4px;
+    }
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .btn-download {
+      background-color: #10b981;
+      color: #ffffff;
+      padding: 10px 20px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+      box-shadow: 0 0 15px rgba(16, 185, 129, 0.4);
+      border: none;
+      cursor: pointer;
+    }
+    .btn-download:hover {
+      background-color: #059669;
+      transform: translateY(-1px);
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.6);
+    }
+    .viewer-container {
+      flex: 1;
+      display: flex;
+      position: relative;
+      background-color: #1e293b;
+    }
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+    .status-msg {
+      position: absolute;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: rgba(15, 23, 42, 0.9);
+      border: 1px solid #10b981;
+      padding: 10px 20px;
+      border-radius: 9999px;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+      z-index: 30;
+      animation: fadeInOut 5s forwards;
+    }
+    @keyframes fadeInOut {
+      0% { opacity: 0; transform: translate(-50%, -10px); }
+      10% { opacity: 1; transform: translate(-50%, 0); }
+      80% { opacity: 1; transform: translate(-50%, 0); }
+      100% { opacity: 0; transform: translate(-50%, -10px); pointer-events: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">Innonsh<span>CRM Suite</span></div>
+    <div class="actions">
+      <a href="/api/emails/track/download?id=${id}&download=true" class="btn-download" id="downloadBtn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        Download Proposal
+      </a>
+    </div>
+  </div>
+  
+  <div class="viewer-container">
+    <div class="status-msg">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+      <span>Opening & downloading your proposal automatically...</span>
+    </div>
+    <iframe src="/api/emails/track/download?id=${id}&inline=true"></iframe>
+  </div>
 
-    return fallbackResponse;
+  <script>
+    // Automatically trigger actual download in background using a hidden iframe
+    setTimeout(() => {
+      const downloadIframe = document.createElement('iframe');
+      downloadIframe.style.display = 'none';
+      downloadIframe.src = '/api/emails/track/download?id=${id}&download=true';
+      document.body.appendChild(downloadIframe);
+    }, 800);
+  </script>
+</body>
+</html>
+    `;
+
+    return new Response(htmlContent, {
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+      },
+    });
+
   } catch (error) {
     console.error('PDF download tracking error:', error);
-    return fallbackResponse;
+    return getFallbackResponse(false);
   }
 }
