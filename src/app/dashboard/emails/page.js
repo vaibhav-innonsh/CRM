@@ -19,7 +19,8 @@ import {
   RefreshCw,
   Clock,
   ArrowRight,
-  User
+  User,
+  MessageSquare
 } from 'lucide-react';
 
 export default function EmailHubPage() {
@@ -172,7 +173,8 @@ export default function EmailHubPage() {
         contactId: activeTab === 'contacts' ? targetId : null,
         proposalFile: proposalFile || '',
         proposalFileData: proposalFileData || '',
-        proposalFileMimeType: proposalFileMimeType || ''
+        proposalFileMimeType: proposalFileMimeType || '',
+        channel: 'email'
       };
 
       const res = await fetch('/api/emails', {
@@ -200,6 +202,105 @@ export default function EmailHubPage() {
     } catch (err) {
       console.error('Email compose error:', err);
       setFormError('An unexpected server error occurred.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // Handle WhatsApp Proposal Generation & Redirect
+  const handleSendWhatsApp = async (e, mode) => {
+    e.preventDefault();
+    if (!targetId) {
+      setFormError('Please select a target recipient.');
+      return;
+    }
+
+    // Find active recipient details
+    const activeRecipient = activeTab === 'leads'
+      ? leads.find(l => l._id === targetId)
+      : contacts.find(c => c._id === targetId);
+
+    if (!activeRecipient) {
+      setFormError('Recipient details not found.');
+      return;
+    }
+
+    const phone = activeRecipient.phone;
+    if (!phone) {
+      setFormError(`Recipient ${activeRecipient.firstName} does not have a phone number registered. Please add a phone number to their profile first!`);
+      return;
+    }
+
+    try {
+      setSending(true);
+      setFormSuccess('');
+      setFormError('');
+
+      const defaultTemplateBody = "Hi {{firstName}},\n\nI hope you are doing well!\n\nI have reviewed your requirements from {{company}} and prepared a detailed proposal for our corporate CRM implementation services.\n\nPlease find the attached estimate ({{proposalFile}}) and download it to review the pricing details.\n\nLooking forward to hearing your thoughts!\n\nBest regards,\nSales Team";
+      const rawBody = body.trim() || defaultTemplateBody;
+      const replacedBody = rawBody
+        .replace(/\{\{firstName\}\}/g, activeRecipient.firstName || 'Client')
+        .replace(/\{\{company\}\}/g, activeRecipient.company || 'your company')
+        .replace(/\{\{proposalFile\}\}/g, proposalFile || 'Proposal.pdf');
+
+      // Create a trackable email/proposal log in the database (SMTP will be bypassed for WhatsApp log)
+      const emailPayload = {
+        subject: subject.trim() || `Sales Proposal for ${activeRecipient.company || 'Client'}`,
+        body: replacedBody,
+        leadId: activeTab === 'leads' ? targetId : null,
+        contactId: activeTab === 'contacts' ? targetId : null,
+        proposalFile: proposalFile || '',
+        proposalFileData: proposalFileData || '',
+        proposalFileMimeType: proposalFileMimeType || '',
+        channel: mode // 'whatsapp' or 'both'
+      };
+
+      const res = await fetch('/api/emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(emailPayload)
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        // Construct the trackable download URL pointing dynamically to our live domain
+        const liveDomain = window.location.origin;
+        const trackUrl = `${liveDomain}/api/emails/track/download?id=${data.email._id}`;
+
+        // Construct the professional WhatsApp message text with clean formatting
+        const whatsappText = `Hi ${activeRecipient.firstName || 'Client'},\n\nI hope you are doing well!\n\nI have prepared a detailed proposal for *${activeRecipient.company || 'your company'}*.\n\nPlease click the secure link below to view and download the official document directly on your screen:\n👉 ${trackUrl}\n\nLooking forward to your thoughts!\n\nBest regards,\nSales Team`;
+
+        // Format phone number to clean digits
+        const cleanPhone = phone.replace(/[^0-9]/g, '');
+
+        // Generate the WhatsApp Web/App Click-to-Chat URL
+        const whatsappUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(whatsappText)}`;
+
+        // Open WhatsApp in a new window/tab
+        window.open(whatsappUrl, '_blank');
+
+        const successMessage = mode === 'both'
+          ? 'Tracked Proposal generated successfully! Dispatching Email campaign and opening WhatsApp chat window...'
+          : 'Tracked Proposal generated successfully! Opening WhatsApp chat window...';
+          
+        setFormSuccess(successMessage);
+        setSubject('');
+        setProposalFileData('');
+        setProposalFileMimeType('');
+        setProposalFile('Proposal.pdf');
+        
+        // Refresh statistics and list
+        await fetchData();
+        
+        if (data.email) {
+          setSelectedSimId(data.email._id);
+        }
+      } else {
+        setFormError(data.error || 'Failed to generate proposal log.');
+      }
+    } catch (err) {
+      console.error('Error generating WhatsApp proposal:', err);
+      setFormError('Failed to generate tracking link for WhatsApp.');
     } finally {
       setSending(false);
     }
@@ -575,14 +676,39 @@ export default function EmailHubPage() {
                 </div>
               )}
 
-              <button
-                type="submit"
-                disabled={sending || (activeTab === 'leads' && leads.length === 0) || (activeTab === 'contacts' && contacts.length === 0)}
-                className="w-full flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md transition disabled:opacity-50 active:scale-[0.99] cursor-pointer"
-              >
-                {sending ? 'Dispatching Tracked Estimate...' : 'Dispatch Proposal & Start Tracking'}
-                <Send className="h-3.5 w-3.5" />
-              </button>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                {/* Email Only Button */}
+                <button
+                  type="submit"
+                  disabled={sending || (activeTab === 'leads' && leads.length === 0) || (activeTab === 'contacts' && contacts.length === 0)}
+                  className="flex items-center justify-center gap-1.5 px-3 py-3 bg-gradient-to-r from-slate-700 to-slate-800 hover:from-slate-800 hover:to-slate-900 text-white font-extrabold text-[10px] uppercase tracking-wider rounded-xl shadow-md transition disabled:opacity-50 active:scale-[0.99] cursor-pointer"
+                >
+                  <Mail className="h-3.5 w-3.5 shrink-0" />
+                  {sending ? 'Sending...' : 'Email Only'}
+                </button>
+
+                {/* WhatsApp Only Button */}
+                <button
+                  type="button"
+                  onClick={(e) => handleSendWhatsApp(e, 'whatsapp')}
+                  disabled={sending || (activeTab === 'leads' && leads.length === 0) || (activeTab === 'contacts' && contacts.length === 0)}
+                  className="flex items-center justify-center gap-1.5 px-3 py-3 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-extrabold text-[10px] uppercase tracking-wider rounded-xl shadow-md transition disabled:opacity-50 active:scale-[0.99] cursor-pointer"
+                >
+                  <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+                  {sending ? 'Generating...' : 'WhatsApp Only'}
+                </button>
+
+                {/* Both Email & WhatsApp Button */}
+                <button
+                  type="button"
+                  onClick={(e) => handleSendWhatsApp(e, 'both')}
+                  disabled={sending || (activeTab === 'leads' && leads.length === 0) || (activeTab === 'contacts' && contacts.length === 0)}
+                  className="flex items-center justify-center gap-1.5 px-3 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-extrabold text-[10px] uppercase tracking-wider rounded-xl shadow-md transition disabled:opacity-50 active:scale-[0.99] cursor-pointer"
+                >
+                  <Sparkles className="h-3.5 w-3.5 text-yellow-300 animate-pulse shrink-0" />
+                  {sending ? 'Both...' : 'Both (Email & WA)'}
+                </button>
+              </div>
             </form>
           </div>
         </div>
@@ -836,6 +962,17 @@ export default function EmailHubPage() {
                       {/* Status Badges */}
                       <td className="py-3.5 text-center">
                         <div className="flex items-center justify-center gap-2">
+                          {/* Channel indicator */}
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold border ${
+                            email.channel === 'whatsapp'
+                              ? 'bg-green-50 text-green-700 border-green-200'
+                              : email.channel === 'both'
+                                ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                : 'bg-slate-50 text-slate-500 border-slate-200'
+                          }`}>
+                            {email.channel === 'whatsapp' ? 'WA 📱' : (email.channel === 'both' ? 'Both ⚡' : 'Email 📧')}
+                          </span>
+
                           {/* Open indicator */}
                           <span className={`px-2 py-0.5 rounded text-[9px] font-bold border ${email.opensCount > 0
                               ? 'bg-emerald-50 text-emerald-700 border-emerald-200'

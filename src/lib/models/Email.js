@@ -65,6 +65,11 @@ const EmailSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    channel: {
+      type: String,
+      enum: ['email', 'whatsapp', 'both'],
+      default: 'email',
+    },
   },
   {
     timestamps: true,

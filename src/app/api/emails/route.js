@@ -74,7 +74,8 @@ export async function POST(req) {
       contactId,
       proposalFile,
       proposalFileData,
-      proposalFileMimeType
+      proposalFileMimeType,
+      channel = 'email'
     } = body;
 
     if (!subject || !subject.trim()) {
@@ -131,8 +132,11 @@ export async function POST(req) {
       sentBy: decodedUser.id,
       proposalFile: proposalFile || '',
       proposalFileData: proposalFileData || '',
-      proposalFileMimeType: proposalFileMimeType || ''
+      proposalFileMimeType: proposalFileMimeType || '',
+      channel
     });
+
+    const channelLabel = channel === 'whatsapp' ? 'WhatsApp' : (channel === 'both' ? 'Email & WhatsApp' : 'Email');
 
     // Automatically log this on the Lead's or Contact's timeline notes
     if (leadId) {
@@ -140,7 +144,7 @@ export async function POST(req) {
         const lead = await Lead.findById(leadId);
         if (lead) {
           lead.notes.push({
-            text: `📧 Sent Tracked Email: "${email.subject}" ${proposalFile ? `with Attachment [${proposalFile}]` : ''}`,
+            text: `📧 Sent Tracked ${channelLabel}: "${email.subject}" ${proposalFile ? `with Attachment [${proposalFile}]` : ''}`,
             createdBy: decodedUser.id,
             createdByName: decodedUser.name
           });
@@ -154,7 +158,7 @@ export async function POST(req) {
         const contact = await Contact.findById(contactId);
         if (contact) {
           contact.notes.push({
-            text: `📧 Sent Tracked Email: "${email.subject}" ${proposalFile ? `with Attachment [${proposalFile}]` : ''}`,
+            text: `📧 Sent Tracked ${channelLabel}: "${email.subject}" ${proposalFile ? `with Attachment [${proposalFile}]` : ''}`,
             createdBy: decodedUser.id,
             createdByName: decodedUser.name
           });
@@ -165,9 +169,9 @@ export async function POST(req) {
       }
     }
 
-    // 7. Dispatch the actual email via SMTP transporter if recipientEmail is present
+    // 7. Dispatch the actual email via SMTP transporter if recipientEmail is present AND channel is NOT whatsapp
     let mailDeliveryResult = null;
-    if (recipientEmail) {
+    if (recipientEmail && channel !== 'whatsapp') {
       try {
         mailDeliveryResult = await sendTrackedEmail({
           emailId: email._id,
@@ -181,16 +185,18 @@ export async function POST(req) {
         console.error('SMTP real delivery exception caught in route:', mailErr);
       }
     } else {
-      console.warn('⚠️ No email address registered for this recipient. Direct delivery skipped.');
+      console.warn(`Direct email delivery skipped. Recipient Email: ${recipientEmail || 'None'}, Channel: ${channel}`);
     }
 
     return NextResponse.json({
       success: true,
-      message: mailDeliveryResult?.success 
-        ? 'Email campaign dispatched and tracked successfully!' 
-        : (mailDeliveryResult?.simulated 
-          ? 'Email dispatched successfully! (Simulated - SMTP settings missing).' 
-          : `Email saved, but real SMTP delivery failed: ${mailDeliveryResult?.error || 'Unknown SMTP error'}`),
+      message: channel === 'whatsapp'
+        ? 'WhatsApp proposal logged and tracked successfully!'
+        : (mailDeliveryResult?.success 
+          ? 'Email campaign dispatched and tracked successfully!' 
+          : (mailDeliveryResult?.simulated 
+            ? 'Email dispatched successfully! (Simulated - SMTP settings missing).' 
+            : `Email saved, but real SMTP delivery failed: ${mailDeliveryResult?.error || 'Unknown SMTP error'}`)),
       email,
       mailDelivery: mailDeliveryResult
     }, { status: 201 });
