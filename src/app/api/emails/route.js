@@ -4,6 +4,7 @@ import Lead from '@/lib/models/Lead';
 import Contact from '@/lib/models/Contact';
 import { getUserFromRequest } from '@/lib/auth';
 import { NextResponse } from 'next/server';
+import { sendTrackedEmail } from '@/lib/mailer';
 
 // GET /api/emails - List emails with filters based on role
 export async function GET(req) {
@@ -71,7 +72,9 @@ export async function POST(req) {
       body: emailBody,
       leadId,
       contactId,
-      proposalFile
+      proposalFile,
+      proposalFileData,
+      proposalFileMimeType
     } = body;
 
     if (!subject || !subject.trim()) {
@@ -84,11 +87,16 @@ export async function POST(req) {
     let finalSubject = subject.trim();
     let finalBody = emailBody;
 
+    let recipientEmail = '';
+    let recipientName = 'Client';
+
     // Resolve template placeholder tags if linked to Lead/Contact
     if (leadId) {
       const lead = await Lead.findById(leadId);
       if (lead) {
-        const fullName = `${lead.firstName || ''} ${lead.lastName || ''}`.trim();
+        recipientEmail = lead.email || '';
+        recipientName = `${lead.firstName || ''} ${lead.lastName || ''}`.trim() || 'Client';
+        const fullName = recipientName;
         finalSubject = finalSubject
           .replace(/\{\{firstName\}\}/g, lead.firstName || '')
           .replace(/\{\{name\}\}/g, fullName)
@@ -101,7 +109,9 @@ export async function POST(req) {
     } else if (contactId) {
       const contact = await Contact.findById(contactId);
       if (contact) {
-        const fullName = `${contact.firstName || ''} ${contact.lastName || ''}`.trim();
+        recipientEmail = contact.email || '';
+        recipientName = `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || 'Client';
+        const fullName = recipientName;
         finalSubject = finalSubject
           .replace(/\{\{firstName\}\}/g, contact.firstName || '')
           .replace(/\{\{name\}\}/g, fullName)
@@ -119,7 +129,9 @@ export async function POST(req) {
       leadId: leadId || null,
       contactId: contactId || null,
       sentBy: decodedUser.id,
-      proposalFile: proposalFile || ''
+      proposalFile: proposalFile || '',
+      proposalFileData: proposalFileData || '',
+      proposalFileMimeType: proposalFileMimeType || ''
     });
 
     // Automatically log this on the Lead's or Contact's timeline notes
@@ -153,10 +165,34 @@ export async function POST(req) {
       }
     }
 
+    // 7. Dispatch the actual email via SMTP transporter if recipientEmail is present
+    let mailDeliveryResult = null;
+    if (recipientEmail) {
+      try {
+        mailDeliveryResult = await sendTrackedEmail({
+          emailId: email._id,
+          toEmail: recipientEmail,
+          toName: recipientName,
+          subject: email.subject,
+          body: email.body,
+          proposalFile: email.proposalFile
+        });
+      } catch (mailErr) {
+        console.error('SMTP real delivery exception caught in route:', mailErr);
+      }
+    } else {
+      console.warn('⚠️ No email address registered for this recipient. Direct delivery skipped.');
+    }
+
     return NextResponse.json({
       success: true,
-      message: 'Email campaign dispatched successfully!',
-      email
+      message: mailDeliveryResult?.success 
+        ? 'Email campaign dispatched and tracked successfully!' 
+        : (mailDeliveryResult?.simulated 
+          ? 'Email dispatched successfully! (Simulated - SMTP settings missing).' 
+          : `Email saved, but real SMTP delivery failed: ${mailDeliveryResult?.error || 'Unknown SMTP error'}`),
+      email,
+      mailDelivery: mailDeliveryResult
     }, { status: 201 });
   } catch (error) {
     console.error('Send email API error:', error);

@@ -112,6 +112,24 @@ export async function GET(req) {
       }
     }
 
+    if (email.proposalFileData) {
+      const base64Data = email.proposalFileData.includes(';base64,')
+        ? email.proposalFileData.split(';base64,')[1]
+        : email.proposalFileData;
+
+      const fileBuffer = Buffer.from(base64Data, 'base64');
+      const filename = email.proposalFile || 'Attachment_Tracked.pdf';
+      const mimeType = email.proposalFileMimeType || 'application/octet-stream';
+
+      return new Response(fileBuffer, {
+        headers: {
+          'Content-Type': mimeType,
+          'Content-Disposition': `attachment; filename="${filename}"`,
+          'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+        },
+      });
+    }
+
     return fallbackResponse;
   } catch (error) {
     console.error('PDF download tracking error:', error);

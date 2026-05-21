@@ -57,6 +57,14 @@ const EmailSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    proposalFileData: {
+      type: String,
+      default: '',
+    },
+    proposalFileMimeType: {
+      type: String,
+      default: '',
+    },
   },
   {
     timestamps: true,

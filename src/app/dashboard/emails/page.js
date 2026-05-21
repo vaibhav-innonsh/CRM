@@ -35,11 +35,43 @@ export default function EmailHubPage() {
   const [targetId, setTargetId] = useState('');
   const [subject, setSubject] = useState('');
   const [proposalFile, setProposalFile] = useState('Proposal.pdf');
-  const [body, setBody] = useState(
-    "Hi {{firstName}},\n\nI hope you are doing well!\n\nI have reviewed your requirements from {{company}} and prepared a detailed proposal for our corporate CRM implementation services.\n\nPlease find the attached estimate ({{proposalFile}}) and download it to review the pricing details.\n\nLooking forward to hearing your thoughts!\n\nBest regards,\nSales Team"
-  );
+  const [proposalFileData, setProposalFileData] = useState('');
+  const [proposalFileMimeType, setProposalFileMimeType] = useState('');
+  const [body, setBody] = useState('');
   const [formSuccess, setFormSuccess] = useState('');
   const [formError, setFormError] = useState('');
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      setFormError('File size is too large. Please select a document under 10MB.');
+      return;
+    }
+
+    setProposalFile(file.name);
+    setProposalFileMimeType(file.type);
+    setFormError('');
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setProposalFileData(reader.result);
+      setFormSuccess(`File "${file.name}" ready to be dispatched with active Zoho-style tracking!`);
+    };
+    reader.onerror = () => {
+      setFormError('Failed to parse the selected file.');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveFile = () => {
+    setProposalFile('Proposal.pdf');
+    setProposalFileData('');
+    setProposalFileMimeType('');
+    setFormSuccess('');
+    setFormError('');
+  };
 
   // Simulator states
   const [selectedSimId, setSelectedSimId] = useState('');
@@ -125,22 +157,22 @@ export default function EmailHubPage() {
       setFormError('Please enter a subject.');
       return;
     }
-    if (!body.trim()) {
-      setFormError('Please enter a body.');
-      return;
-    }
-
     try {
       setSending(true);
       setFormSuccess('');
       setFormError('');
 
+      const defaultTemplateBody = "Hi {{firstName}},\n\nI hope you are doing well!\n\nI have reviewed your requirements from {{company}} and prepared a detailed proposal for our corporate CRM implementation services.\n\nPlease find the attached estimate ({{proposalFile}}) and download it to review the pricing details.\n\nLooking forward to hearing your thoughts!\n\nBest regards,\nSales Team";
+      const finalEmailBody = body.trim() || defaultTemplateBody;
+
       const emailPayload = {
         subject,
-        body: body.replace(/\{\{proposalFile\}\}/g, proposalFile || 'Proposal.pdf'),
+        body: finalEmailBody.replace(/\{\{proposalFile\}\}/g, proposalFile || 'Proposal.pdf'),
         leadId: activeTab === 'leads' ? targetId : null,
         contactId: activeTab === 'contacts' ? targetId : null,
-        proposalFile: proposalFile || ''
+        proposalFile: proposalFile || '',
+        proposalFileData: proposalFileData || '',
+        proposalFileMimeType: proposalFileMimeType || ''
       };
 
       const res = await fetch('/api/emails', {
@@ -153,6 +185,9 @@ export default function EmailHubPage() {
       if (res.ok) {
         setFormSuccess('Email dispatched successfully! Tracking pixel and proposal attachment download links are embedded.');
         setSubject('');
+        setProposalFileData('');
+        setProposalFileMimeType('');
+        setProposalFile('Proposal.pdf');
         // Reload statistics and feed list
         await fetchData();
         // Automatically select the newly sent email for client action simulation
@@ -462,17 +497,34 @@ export default function EmailHubPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1">
-                    Embedded Attachment Filename
+                    Embedded Proposal Document (Zoho-Style)
                   </label>
-                  <div className="relative">
-                    <FileText className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                    <input
-                      type="text"
-                      value={proposalFile}
-                      onChange={(e) => setProposalFile(e.target.value)}
-                      placeholder="e.g. Proposal.pdf"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-3.5 py-2 text-xs font-medium text-slate-700 focus:outline-none focus:border-indigo-500 transition"
-                    />
+                  <div className="relative flex items-center gap-2">
+                    <label className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-350 rounded-lg text-xs font-bold text-slate-700 cursor-pointer transition active:scale-95">
+                      <FileText className="h-4 w-4 text-indigo-500" />
+                      Choose File
+                      <input
+                        type="file"
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                        onChange={handleFileChange}
+                        className="hidden"
+                      />
+                    </label>
+                    {proposalFileData ? (
+                      <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-1.5 rounded-lg text-[10px] font-extrabold max-w-[180px] truncate">
+                        <span className="truncate">📎 {proposalFile}</span>
+                        <button
+                          type="button"
+                          onClick={handleRemoveFile}
+                          className="text-rose-500 hover:text-rose-700 font-bold shrink-0 ml-1 cursor-pointer"
+                          title="Remove File"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-[10px] text-slate-400 italic">No real file selected (default tracked PDF will be used)</span>
+                    )}
                   </div>
                 </div>
 
@@ -504,7 +556,7 @@ export default function EmailHubPage() {
                   value={body}
                   onChange={(e) => setBody(e.target.value)}
                   rows="9"
-                  placeholder="Draft your proposal email..."
+                  placeholder={"Hi {{firstName}},\n\nI hope you are doing well!\n\nI have reviewed your requirements from {{company}} and prepared a detailed proposal for our corporate CRM implementation services.\n\nPlease find the attached estimate ({{proposalFile}}) and download it to review the pricing details.\n\nLooking forward to hearing your thoughts!\n\nBest regards,\nSales Team"}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 text-xs font-medium text-slate-700 font-mono focus:outline-none focus:border-indigo-500 transition leading-relaxed"
                 ></textarea>
               </div>
