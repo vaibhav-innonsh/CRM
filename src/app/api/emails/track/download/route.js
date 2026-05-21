@@ -38,7 +38,7 @@ export async function GET(req) {
   const fallbackResponse = new Response(pdfBuffer, {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': 'attachment; filename="Proposal_Tracked.pdf"',
+      'Content-Disposition': 'inline; filename="Proposal_Tracked.pdf"',
     },
   });
 
@@ -124,7 +124,7 @@ export async function GET(req) {
       return new Response(fileBuffer, {
         headers: {
           'Content-Type': mimeType,
-          'Content-Disposition': `attachment; filename="${filename}"`,
+          'Content-Disposition': `inline; filename="${filename}"`,
           'Cache-Control': 'no-store, no-cache, must-revalidate, private',
         },
       });
