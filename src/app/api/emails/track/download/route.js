@@ -252,20 +252,10 @@ export async function GET(req) {
   <div class="viewer-container">
     <div class="status-msg">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-      <span>Opening & downloading your proposal automatically...</span>
+      <span>Proposal loaded securely. Click 'Download' to save.</span>
     </div>
     <iframe src="/api/emails/track/download?id=${id}&inline=true"></iframe>
   </div>
-
-  <script>
-    // Automatically trigger actual download in background using a hidden iframe
-    setTimeout(() => {
-      const downloadIframe = document.createElement('iframe');
-      downloadIframe.style.display = 'none';
-      downloadIframe.src = '/api/emails/track/download?id=${id}&download=true';
-      document.body.appendChild(downloadIframe);
-    }, 800);
-  </script>
 </body>
 </html>
     `;
