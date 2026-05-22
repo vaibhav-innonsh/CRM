@@ -2,6 +2,8 @@ import { getUserFromRequest, comparePassword, hashPassword } from '@/lib/auth';
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/db';
 import User from '@/lib/models/User';
+import { supabase } from '@/lib/supabaseClient';
+import { mapUserToFrontend } from '@/lib/dbMapper';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,12 +19,45 @@ export async function GET(req) {
       );
     }
 
-    await connectToDatabase();
+    let user = null;
+    let userId = null;
+    let userName = null;
+    let userEmail = null;
+    let userRole = null;
+    let userIsActive = true;
 
-    // 2. Fetch fresh user data from database (ensuring active status)
-    const user = await User.findById(decodedUser.id);
+    // 2. FRESH FETCH FROM DB
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', decodedUser.id)
+        .maybeSingle();
 
-    if (!user || !user.isActive) {
+      if (error) {
+        console.error('Supabase get-me fetch error:', error);
+      } else if (data) {
+        user = mapUserToFrontend(data);
+        userId = data.id;
+        userName = data.name;
+        userEmail = data.email;
+        userRole = data.role;
+        userIsActive = data.is_active;
+      }
+    } else {
+      await connectToDatabase();
+      const mongoUser = await User.findById(decodedUser.id);
+      if (mongoUser) {
+        user = mongoUser;
+        userId = mongoUser._id;
+        userName = mongoUser.name;
+        userEmail = mongoUser.email;
+        userRole = mongoUser.role;
+        userIsActive = mongoUser.isActive;
+      }
+    }
+
+    if (!user || !userIsActive) {
       return NextResponse.json(
         { error: 'User not found or deactivated.' },
         { status: 403 }
@@ -32,10 +67,10 @@ export async function GET(req) {
     return NextResponse.json({
       authenticated: true,
       user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
+        id: userId,
+        name: userName,
+        email: userEmail,
+        role: userRole,
       },
     });
   } catch (error) {
@@ -56,27 +91,66 @@ export async function PUT(req) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await connectToDatabase();
+    let user = null;
+    let userId = null;
+    let userName = null;
+    let userEmail = null;
+    let userRole = null;
+    let userIsActive = true;
+    let userHashedPassword = '';
 
-    const user = await User.findById(decodedUser.id).select('+password');
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', decodedUser.id)
+        .maybeSingle();
 
-    if (!user || !user.isActive) {
+      if (error) {
+        console.error('Supabase fetch-me-put error:', error);
+      } else if (data) {
+        user = data;
+        userId = data.id;
+        userName = data.name;
+        userEmail = data.email;
+        userRole = data.role;
+        userIsActive = data.is_active;
+        userHashedPassword = data.password;
+      }
+    } else {
+      await connectToDatabase();
+      const mongoUser = await User.findById(decodedUser.id).select('+password');
+      if (mongoUser) {
+        user = mongoUser;
+        userId = mongoUser._id;
+        userName = mongoUser.name;
+        userEmail = mongoUser.email;
+        userRole = mongoUser.role;
+        userIsActive = mongoUser.isActive;
+        userHashedPassword = mongoUser.password;
+      }
+    }
+
+    if (!user || !userIsActive) {
       return NextResponse.json({ error: 'User session not found or deactivated.' }, { status: 403 });
     }
 
     const { name, currentPassword, newPassword } = await req.json();
+
+    let updatedName = userName;
+    let updatedPassword = userHashedPassword;
 
     // 1. Update Name
     if (name !== undefined) {
       if (!name.trim()) {
         return NextResponse.json({ error: 'Profile name cannot be left blank.' }, { status: 400 });
       }
-      user.name = name.trim();
+      updatedName = name.trim();
     }
 
     // 2. Securely Change Password using Bcrypt verification
     if (currentPassword && newPassword) {
-      const isMatch = await comparePassword(currentPassword, user.password);
+      const isMatch = await comparePassword(currentPassword, userHashedPassword);
       if (!isMatch) {
         return NextResponse.json({ error: 'Incorrect current password.' }, { status: 400 });
       }
@@ -85,19 +159,43 @@ export async function PUT(req) {
         return NextResponse.json({ error: 'New password must be at least 6 characters long.' }, { status: 400 });
       }
 
-      user.password = await hashPassword(newPassword);
+      updatedPassword = await hashPassword(newPassword);
     }
 
-    await user.save();
+    // Save Updates
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('users')
+        .update({
+          name: updatedName,
+          password: updatedPassword,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId)
+        .select('*')
+        .single();
+
+      if (error) {
+        console.error('Supabase user profile update error:', error);
+        throw error;
+      }
+
+      userName = data.name;
+    } else {
+      user.name = updatedName;
+      user.password = updatedPassword;
+      await user.save();
+      userName = user.name;
+    }
 
     return NextResponse.json({
       success: true,
       message: 'Profile settings updated successfully!',
       user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role
+        id: userId,
+        name: userName,
+        email: userEmail,
+        role: userRole
       }
     });
   } catch (error) {

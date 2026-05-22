@@ -364,12 +364,20 @@ export default function EmailHubPage() {
     if (email.contactId) {
       return `${email.contactId.firstName} ${email.contactId.lastName || ''} (${email.contactId.company})`;
     }
+    if (email.subject?.includes('Welcome to Innonsh')) {
+      return 'Registered Applicant';
+    }
+    if (email.subject?.includes('Access Request')) {
+      return 'System Administrator';
+    }
     return 'Unknown Recipient';
   };
 
   const getRecipientType = (email) => {
     if (email.leadId) return { label: 'Lead', color: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
     if (email.contactId) return { label: 'Contact', color: 'bg-teal-50 text-teal-700 border-teal-200' };
+    if (email.subject?.includes('Welcome to Innonsh')) return { label: 'Access Request', color: 'bg-purple-50 text-purple-700 border-purple-200' };
+    if (email.subject?.includes('Access Request')) return { label: 'System Admin Alert', color: 'bg-amber-50 text-amber-700 border-amber-200' };
     return { label: 'General', color: 'bg-slate-100 text-slate-700 border-slate-200' };
   };
 

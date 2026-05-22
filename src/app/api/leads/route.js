@@ -2,6 +2,8 @@ import connectToDatabase from '@/lib/db';
 import Lead from '@/lib/models/Lead';
 import User from '@/lib/models/User';
 import Task from '@/lib/models/Task';
+import { supabase } from '@/lib/supabaseClient';
+import { mapLeadToFrontend } from '@/lib/dbMapper';
 import { getUserFromRequest } from '@/lib/auth';
 import { NextResponse } from 'next/server';
 
@@ -17,76 +19,134 @@ export async function GET(req) {
       );
     }
 
-    await connectToDatabase();
-
     const { searchParams } = new URL(req.url);
     const search = searchParams.get('search') || '';
     const status = searchParams.get('status') || '';
     const source = searchParams.get('source') || '';
     const priority = searchParams.get('priority') || '';
     const assignedToFilter = searchParams.get('assignedTo') || '';
-
-    // 1. Build dynamic MongoDB query filters
-    const query = {};
-
-    // 2. STICT ROLE-BASED ACCESS CONTROL (Leads Isolation)
-    if (decodedUser.role === 'sales_rep') {
-      // Sales Representative can ONLY see leads assigned directly to them
-      query.assignedTo = decodedUser.id;
-    } else if (assignedToFilter) {
-      // Owner or Sales Admin can filter leads by a specific rep
-      query.assignedTo = assignedToFilter;
-    }
-
-    // Apply status filter if selected
-    if (status) {
-      query.status = status;
-    }
-
-    // Apply source filter if selected
-    if (source) {
-      query.source = source;
-    }
-
-    // Apply priority filter if selected
-    if (priority) {
-      query.priority = priority;
-    }
-
-    // Apply advanced text search on name, company, email, city, designation or industry
-    if (search) {
-      query.$or = [
-        { firstName: { $regex: search, $options: 'i' } },
-        { lastName: { $regex: search, $options: 'i' } },
-        { company: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
-        { phone: { $regex: search, $options: 'i' } },
-        { designation: { $regex: search, $options: 'i' } },
-        { city: { $regex: search, $options: 'i' } },
-        { industry: { $regex: search, $options: 'i' } },
-      ];
-    }
-
     const sortBy = searchParams.get('sortBy') || 'newest';
 
-    // Fetch leads and populate assignee details (name & email)
-    let leads = await Lead.find(query)
-      .populate('assignedTo', 'name email');
+    let leads = [];
 
-    if (sortBy === 'latest_communication') {
-      leads = leads.sort((a, b) => {
-        const aLatest = Math.max(
-          new Date(a.createdAt || 0).getTime() || 0,
-          ...(a.notes || []).map((n) => new Date(n.createdAt || 0).getTime() || 0)
+    // 1. DYNAMIC DATABASE DETECTOR
+    if (supabase) {
+      // Query Supabase
+      let queryBuilder = supabase
+        .from('leads')
+        .select('*, users(id, name, email), lead_notes(*), lead_attachments(*)');
+
+      // STICT ROLE-BASED ACCESS CONTROL (Leads Isolation)
+      if (decodedUser.role === 'sales_rep') {
+        queryBuilder = queryBuilder.or(`assigned_to.eq.${decodedUser.id},assigned_to.is.null`);
+      } else if (assignedToFilter) {
+        if (assignedToFilter === 'all') {
+          queryBuilder = queryBuilder.is('assigned_to', null);
+        } else {
+          queryBuilder = queryBuilder.eq('assigned_to', assignedToFilter);
+        }
+      }
+
+      // Filters
+      if (status) {
+        queryBuilder = queryBuilder.eq('status', status);
+      }
+      if (source) {
+        queryBuilder = queryBuilder.eq('source', source);
+      }
+      if (priority) {
+        queryBuilder = queryBuilder.eq('priority', priority);
+      }
+
+      // Dynamic Search on columns
+      if (search) {
+        const s = `%${search}%`;
+        queryBuilder = queryBuilder.or(
+          `first_name.ilike.${s},last_name.ilike.${s},company.ilike.${s},email.ilike.${s},phone.ilike.${s},designation.ilike.${s},city.ilike.${s},industry.ilike.${s}`
         );
-        const bLatest = Math.max(
-          new Date(b.createdAt || 0).getTime() || 0,
-          ...(b.notes || []).map((n) => new Date(n.createdAt || 0).getTime() || 0)
-        );
-        return bLatest - aLatest;
-      });
+      }
+
+      const { data, error } = await queryBuilder;
+
+      if (error) {
+        console.error('Supabase fetch leads error:', error);
+        throw error;
+      }
+
+      // Map raw postgres rows to frontend camelCase formats
+      leads = (data || []).map(mapLeadToFrontend);
+
+      // Sort results
+      if (sortBy === 'latest_communication') {
+        leads.sort((a, b) => {
+          const aLatest = Math.max(
+            new Date(a.createdAt || 0).getTime() || 0,
+            ...(a.notes || []).map((n) => new Date(n.createdAt || 0).getTime() || 0)
+          );
+          const bLatest = Math.max(
+            new Date(b.createdAt || 0).getTime() || 0,
+            ...(b.notes || []).map((n) => new Date(n.createdAt || 0).getTime() || 0)
+          );
+          return bLatest - aLatest;
+        });
+      } else {
+        leads.sort((a, b) => (new Date(b.createdAt || 0).getTime() || 0) - (new Date(a.createdAt || 0).getTime() || 0));
+      }
+
     } else {
-      leads = leads.sort((a, b) => (new Date(b.createdAt || 0).getTime() || 0) - (new Date(a.createdAt || 0).getTime() || 0));
+      // Fallback to MongoDB
+      await connectToDatabase();
+      const query = {};
+
+      if (decodedUser.role === 'sales_rep') {
+        query.$or = [
+          { assignedTo: decodedUser.id },
+          { assignedTo: null }
+        ];
+      } else if (assignedToFilter) {
+        if (assignedToFilter === 'all') {
+          query.assignedTo = null;
+        } else {
+          query.assignedTo = assignedToFilter;
+        }
+      }
+
+      if (status) query.status = status;
+      if (source) query.source = source;
+      if (priority) query.priority = priority;
+
+      if (search) {
+        query.$or = [
+          { firstName: { $regex: search, $options: 'i' } },
+          { lastName: { $regex: search, $options: 'i' } },
+          { company: { $regex: search, $options: 'i' } },
+          { email: { $regex: search, $options: 'i' } },
+          { phone: { $regex: search, $options: 'i' } },
+          { designation: { $regex: search, $options: 'i' } },
+          { city: { $regex: search, $options: 'i' } },
+          { industry: { $regex: search, $options: 'i' } },
+        ];
+      }
+
+      let mongoLeads = await Lead.find(query).populate('assignedTo', 'name email');
+
+      if (sortBy === 'latest_communication') {
+        mongoLeads = mongoLeads.sort((a, b) => {
+          const aLatest = Math.max(
+            new Date(a.createdAt || 0).getTime() || 0,
+            ...(a.notes || []).map((n) => new Date(n.createdAt || 0).getTime() || 0)
+          );
+          const bLatest = Math.max(
+            new Date(b.createdAt || 0).getTime() || 0,
+            ...(b.notes || []).map((n) => new Date(n.createdAt || 0).getTime() || 0)
+          );
+          return bLatest - aLatest;
+        });
+      } else {
+        mongoLeads = mongoLeads.sort((a, b) => (new Date(b.createdAt || 0).getTime() || 0) - (new Date(a.createdAt || 0).getTime() || 0));
+      }
+
+      leads = mongoLeads;
     }
 
     return NextResponse.json({
@@ -114,8 +174,6 @@ export async function POST(req) {
         { status: 401 }
       );
     }
-
-    await connectToDatabase();
 
     const body = await req.json();
     const {
@@ -152,30 +210,9 @@ export async function POST(req) {
       );
     }
 
-    // 1. BUSINESS RULE: Duplicate Lead Check (Email & Phone validation)
-    if (email && email.trim()) {
-      const duplicateEmail = await Lead.findOne({ email: email.toLowerCase().trim() });
-      if (duplicateEmail) {
-        return NextResponse.json(
-          { error: `Duplicate Check Warning: A lead record with Email "${email.trim()}" already exists.` },
-          { status: 400 }
-        );
-      }
-    }
-
-    if (phone && phone.trim()) {
-      const duplicatePhone = await Lead.findOne({ phone: phone.trim() });
-      if (duplicatePhone) {
-        return NextResponse.json(
-          { error: `Duplicate Check Warning: A lead record with Phone "${phone.trim()}" already exists.` },
-          { status: 400 }
-        );
-      }
-    }
-
     const leadStatusValue = status || 'New';
 
-    // 2. BUSINESS RULE: Next Follow-up Date Mandatory (For Contacted, Qualified, Attempted)
+    // 1. BUSINESS RULE: Next Follow-up Date Mandatory (For Contacted, Qualified, Attempted)
     const requiredReminderStatuses = ['Contacted', 'Qualified', 'Attempted'];
     if (requiredReminderStatuses.includes(leadStatusValue) && !nextFollowUpDate) {
       return NextResponse.json(
@@ -184,7 +221,7 @@ export async function POST(req) {
       );
     }
 
-    // 3. BUSINESS RULE: Lost Reason Mandatory
+    // 2. BUSINESS RULE: Lost Reason Mandatory
     if (leadStatusValue === 'Lost' && !lostReason) {
       return NextResponse.json(
         { error: 'Validation Failure: Lost Reason is mandatory when lead status is "Lost".' },
@@ -192,100 +229,289 @@ export async function POST(req) {
       );
     }
 
-    // Build the expanded industrial lead data object
-    const leadData = {
-      firstName,
-      lastName: lastName || '',
-      company,
-      designation: designation || '',
-      email: email || '',
-      phone: phone || '',
-      whatsapp: whatsapp || '',
-      website: website || '',
-      city: city || '',
-      state: state || '',
-      country: country || 'India',
-      industry: industry || '',
-      employeeCount: Number(employeeCount) || 0,
-      annualRevenue: Number(annualRevenue) || 0,
-      priority: priority || 'Warm',
-      status: leadStatusValue,
-      lostReason: leadStatusValue === 'Lost' ? lostReason : '',
-      source: source || 'Website',
-      requirements: requirements || '',
-      interestedProduct: interestedProduct || '',
-      followUpType: followUpType || 'None',
-      nextFollowUpDate: nextFollowUpDate ? new Date(nextFollowUpDate) : null,
-      customFields: customFields || [],
-      notes: [],
-    };
+    let finalLead = null;
 
-    let finalAssignee = assignedTo || null;
+    // 3. DYNAMIC DATABASE DETECTOR
+    if (supabase) {
+      // Duplicate checks
+      if (email && email.trim()) {
+        const { data: duplicateEmail } = await supabase
+          .from('leads')
+          .select('id')
+          .eq('email', email.toLowerCase().trim())
+          .maybeSingle();
 
-    // Check for Round-Robin Auto Assignment
-    if (body.autoAssign === true && !assignedTo) {
-      const activeReps = await User.find({ role: 'sales_rep', isActive: true }).sort({ createdAt: 1 });
-      if (activeReps.length > 0) {
-        const lastAssignedLead = await Lead.findOne({
-          assignedTo: { $in: activeReps.map(r => r._id) }
-        }).sort({ createdAt: -1 });
-
-        if (lastAssignedLead && lastAssignedLead.assignedTo) {
-          const lastRepIndex = activeReps.findIndex(r => r._id.toString() === lastAssignedLead.assignedTo.toString());
-          const nextRepIndex = (lastRepIndex + 1) % activeReps.length;
-          finalAssignee = activeReps[nextRepIndex]._id;
-        } else {
-          finalAssignee = activeReps[0]._id;
+        if (duplicateEmail) {
+          return NextResponse.json(
+            { error: `Duplicate Check Warning: A lead record with Email "${email.trim()}" already exists.` },
+            { status: 400 }
+          );
         }
       }
-    }
 
-    // If an assignee is determined, verify they exist
-    if (finalAssignee) {
-      const assigneeExists = await User.findById(finalAssignee);
-      if (!assigneeExists) {
-        return NextResponse.json(
-          { error: 'Assigned user does not exist.' },
-          { status: 400 }
-        );
+      if (phone && phone.trim()) {
+        const { data: duplicatePhone } = await supabase
+          .from('leads')
+          .select('id')
+          .eq('phone', phone.trim())
+          .maybeSingle();
+
+        if (duplicatePhone) {
+          return NextResponse.json(
+            { error: `Duplicate Check Warning: A lead record with Phone "${phone.trim()}" already exists.` },
+            { status: 400 }
+          );
+        }
       }
-      leadData.assignedTo = finalAssignee;
+
+      let finalAssignee = assignedTo || null;
+
+      if (assignedTo === 'all') {
+        finalAssignee = null;
+      } else if (body.autoAssign === true && !assignedTo) {
+        const { data: activeReps } = await supabase
+          .from('users')
+          .select('id')
+          .eq('role', 'sales_rep')
+          .eq('is_active', true)
+          .order('created_at', { ascending: true });
+
+        if (activeReps && activeReps.length > 0) {
+          const repIds = activeReps.map(r => r.id);
+          const { data: lastLead } = await supabase
+            .from('leads')
+            .select('assigned_to')
+            .in('assigned_to', repIds)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (lastLead && lastLead.assigned_to) {
+            const lastRepIndex = activeReps.findIndex(r => r.id === lastLead.assigned_to);
+            const nextRepIndex = (lastRepIndex + 1) % activeReps.length;
+            finalAssignee = activeReps[nextRepIndex].id;
+          } else {
+            finalAssignee = activeReps[0].id;
+          }
+        }
+      } else if (!finalAssignee) {
+        // Default to creator
+        finalAssignee = decodedUser.id;
+      }
+
+      // Check if assignee exists
+      if (finalAssignee) {
+        const { data: assigneeExists } = await supabase
+          .from('users')
+          .select('id')
+          .eq('id', finalAssignee)
+          .maybeSingle();
+
+        if (!assigneeExists) {
+          return NextResponse.json(
+            { error: 'Assigned user does not exist.' },
+            { status: 400 }
+          );
+        }
+      }
+
+      // Insert Lead
+      const { data: newLead, error: insertError } = await supabase
+        .from('leads')
+        .insert([
+          {
+            first_name: firstName,
+            last_name: lastName || '',
+            company,
+            designation: designation || '',
+            email: email || '',
+            phone: phone || '',
+            whatsapp: whatsapp || '',
+            website: website || '',
+            city: city || '',
+            state: state || '',
+            country: country || 'India',
+            industry: industry || '',
+            employee_count: Number(employeeCount) || 0,
+            annual_revenue: Number(annualRevenue) || 0,
+            priority: priority || 'Warm',
+            status: leadStatusValue,
+            lost_reason: leadStatusValue === 'Lost' ? lostReason : '',
+            source: source || 'Website',
+            requirements: requirements || '',
+            interested_product: interestedProduct || '',
+            follow_up_type: followUpType || 'None',
+            next_follow_up_date: nextFollowUpDate ? new Date(nextFollowUpDate).toISOString() : null,
+            assigned_to: finalAssignee,
+            custom_fields: customFields || []
+          }
+        ])
+        .select('*')
+        .single();
+
+      if (insertError) {
+        console.error('Supabase lead insert error:', insertError);
+        throw insertError;
+      }
+
+      // Create initial timeline creation note log
+      await supabase
+        .from('lead_notes')
+        .insert([
+          {
+            lead_id: newLead.id,
+            text: `Lead created by ${decodedUser.name}`,
+            created_by: decodedUser.id,
+            created_by_name: decodedUser.name
+          }
+        ]);
+
+      // Fetch freshly joined lead to match response data
+      const { data: refreshedLead } = await supabase
+        .from('leads')
+        .select('*, users(id, name, email), lead_notes(*), lead_attachments(*)')
+        .eq('id', newLead.id)
+        .single();
+
+      finalLead = mapLeadToFrontend(refreshedLead);
+
+      // Auto-create Task Reminder
+      if (newLead.next_follow_up_date) {
+        try {
+          await supabase
+            .from('tasks')
+            .insert([
+              {
+                subject: `Follow-up Call: ${newLead.first_name} (${newLead.company})`,
+                due_date: newLead.next_follow_up_date,
+                priority: newLead.priority === 'Hot' ? 'High' : (newLead.priority === 'Cold' ? 'Low' : 'Medium'),
+                status: 'Pending',
+                assigned_to: newLead.assigned_to || decodedUser.id,
+                lead_id: newLead.id
+              }
+            ]);
+        } catch (err) {
+          console.error('Failed to auto-create follow-up task on Supabase lead save:', err);
+        }
+      }
+
     } else {
-      // By default, if a Sales Rep creates a lead, it is assigned to them
-      if (decodedUser.role === 'sales_rep') {
-        leadData.assignedTo = decodedUser.id;
+      // Fallback to MongoDB
+      await connectToDatabase();
+
+      if (email && email.trim()) {
+        const duplicateEmail = await Lead.findOne({ email: email.toLowerCase().trim() });
+        if (duplicateEmail) {
+          return NextResponse.json(
+            { error: `Duplicate Check Warning: A lead record with Email "${email.trim()}" already exists.` },
+            { status: 400 }
+          );
+        }
       }
-    }
 
-    // Add initial creation log note
-    leadData.notes.push({
-      text: `Lead created by ${decodedUser.name}`,
-      createdBy: decodedUser.id,
-      createdByName: decodedUser.name,
-    });
+      if (phone && phone.trim()) {
+        const duplicatePhone = await Lead.findOne({ phone: phone.trim() });
+        if (duplicatePhone) {
+          return NextResponse.json(
+            { error: `Duplicate Check Warning: A lead record with Phone "${phone.trim()}" already exists.` },
+            { status: 400 }
+          );
+        }
+      }
 
-    const newLead = await Lead.create(leadData);
+      const leadData = {
+        firstName,
+        lastName: lastName || '',
+        company,
+        designation: designation || '',
+        email: email || '',
+        phone: phone || '',
+        whatsapp: whatsapp || '',
+        website: website || '',
+        city: city || '',
+        state: state || '',
+        country: country || 'India',
+        industry: industry || '',
+        employeeCount: Number(employeeCount) || 0,
+        annualRevenue: Number(annualRevenue) || 0,
+        priority: priority || 'Warm',
+        status: leadStatusValue,
+        lostReason: leadStatusValue === 'Lost' ? lostReason : '',
+        source: source || 'Website',
+        requirements: requirements || '',
+        interestedProduct: interestedProduct || '',
+        followUpType: followUpType || 'None',
+        nextFollowUpDate: nextFollowUpDate ? new Date(nextFollowUpDate) : null,
+        customFields: customFields || [],
+        notes: [],
+      };
 
-    // AUTO-TASK REMINDER GENERATION TRIGGER
-    if (newLead.nextFollowUpDate) {
-      try {
-        await Task.create({
-          subject: `Follow-up Call: ${newLead.firstName} (${newLead.company})`,
-          dueDate: newLead.nextFollowUpDate,
-          priority: newLead.priority === 'Hot' ? 'High' : (newLead.priority === 'Cold' ? 'Low' : 'Medium'),
-          status: 'Pending',
-          assignedTo: newLead.assignedTo || decodedUser.id,
-          leadId: newLead._id
-        });
-      } catch (err) {
-        console.error('Failed to auto-create follow-up task on lead save:', err);
+      let finalAssignee = assignedTo || null;
+
+      if (assignedTo === 'all') {
+        finalAssignee = null;
+      } else if (body.autoAssign === true && !assignedTo) {
+        const activeReps = await User.find({ role: 'sales_rep', isActive: true }).sort({ createdAt: 1 });
+        if (activeReps.length > 0) {
+          const lastAssignedLead = await Lead.findOne({
+            assignedTo: { $in: activeReps.map(r => r._id) }
+          }).sort({ createdAt: -1 });
+
+          if (lastAssignedLead && lastAssignedLead.assignedTo) {
+            const lastRepIndex = activeReps.findIndex(r => r._id.toString() === lastAssignedLead.assignedTo.toString());
+            const nextRepIndex = (lastRepIndex + 1) % activeReps.length;
+            finalAssignee = activeReps[nextRepIndex]._id;
+          } else {
+            finalAssignee = activeReps[0]._id;
+          }
+        }
+      } else if (!finalAssignee) {
+        // Default to creator
+        finalAssignee = decodedUser.id;
+      }
+
+      if (finalAssignee) {
+        const assigneeExists = await User.findById(finalAssignee);
+        if (!assigneeExists) {
+          return NextResponse.json(
+            { error: 'Assigned user does not exist.' },
+            { status: 400 }
+          );
+        }
+        leadData.assignedTo = finalAssignee;
+      } else {
+        leadData.assignedTo = null;
+      }
+
+      leadData.notes.push({
+        text: `Lead created by ${decodedUser.name}`,
+        createdBy: decodedUser.id,
+        createdByName: decodedUser.name,
+      });
+
+      const newLead = await Lead.create(leadData);
+      finalLead = newLead;
+
+      if (newLead.nextFollowUpDate) {
+        try {
+          await Task.create({
+            subject: `Follow-up Call: ${newLead.firstName} (${newLead.company})`,
+            dueDate: newLead.nextFollowUpDate,
+            priority: newLead.priority === 'Hot' ? 'High' : (newLead.priority === 'Cold' ? 'Low' : 'Medium'),
+            status: 'Pending',
+            assignedTo: newLead.assignedTo || decodedUser.id,
+            leadId: newLead._id
+          });
+        } catch (err) {
+          console.error('Failed to auto-create follow-up task on lead save:', err);
+        }
       }
     }
 
     return NextResponse.json({
       success: true,
       message: 'Standard industrial lead created successfully',
-      lead: newLead,
+      lead: finalLead,
     }, { status: 201 });
   } catch (error) {
     console.error('Create lead error:', error);

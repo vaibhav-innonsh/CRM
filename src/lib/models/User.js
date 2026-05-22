@@ -33,6 +33,14 @@ const UserSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    otpCode: {
+      type: String,
+      default: null,
+    },
+    otpExpiry: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true, // Auto-creates createdAt and updatedAt

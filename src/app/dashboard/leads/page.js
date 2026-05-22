@@ -471,7 +471,7 @@ export default function LeadsPage() {
     if (lead.assignedTo) {
       setEditLeadAssignedTo(lead.assignedTo._id || lead.assignedTo);
     } else {
-      setEditLeadAssignedTo('');
+      setEditLeadAssignedTo('all');
     }
 
     setEditModalOpen(true);
@@ -1048,10 +1048,15 @@ export default function LeadsPage() {
               onChange={(e) => setRepFilter(e.target.value)}
               className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-600 transition"
             >
-              <option value="">All Sales Reps</option>
-              {salesReps.map((rep) => (
-                <option key={rep._id} value={rep._id}>{rep.name} ({rep.role === 'owner' ? 'Owner' : 'Manager'})</option>
-              ))}
+              <option value="">All Sales Reps & Pool</option>
+              <option value="all">🌐 Shared Pool (All Reps)</option>
+              {salesReps
+                .filter((rep) => rep.role !== 'owner')
+                .map((rep) => (
+                  <option key={rep._id} value={rep._id}>
+                    {rep.name} ({rep.role === 'sales_admin' ? 'Manager' : 'Rep'})
+                  </option>
+                ))}
             </select>
           </div>
         ) : (
@@ -2043,12 +2048,15 @@ export default function LeadsPage() {
                           onChange={(e) => setAssignedTo(e.target.value)}
                           className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-600 transition disabled:opacity-50"
                         >
-                          <option value="">Unassigned (Keep in Pool)</option>
-                          {salesReps.map((rep) => (
-                            <option key={rep._id} value={rep._id}>
-                              {rep.name} ({rep.role === 'owner' ? 'Owner' : rep.role === 'sales_admin' ? 'Manager' : 'Rep'})
-                            </option>
-                          ))}
+                          <option value="">👤 Assign to Me (Default)</option>
+                          <option value="all">🌐 Assign to All Sales Representatives (Shared Pool)</option>
+                          {salesReps
+                            .filter((rep) => rep.role !== 'owner')
+                            .map((rep) => (
+                              <option key={rep._id} value={rep._id}>
+                                {rep.name} ({rep.role === 'sales_admin' ? 'Manager' : 'Rep'})
+                              </option>
+                            ))}
                         </select>
                         <label className="flex items-center gap-2 text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-150 px-3.5 py-2.5 rounded-lg cursor-pointer hover:bg-indigo-100 transition select-none w-fit">
                           <input
@@ -2477,12 +2485,14 @@ export default function LeadsPage() {
                           onChange={(e) => setEditLeadAssignedTo(e.target.value)}
                           className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-600 transition"
                         >
-                          <option value="">Unassigned (Keep in Pool)</option>
-                          {salesReps.map((rep) => (
-                            <option key={rep._id} value={rep._id}>
-                              {rep.name} ({rep.role === 'owner' ? 'Owner' : rep.role === 'sales_admin' ? 'Manager' : 'Rep'})
-                            </option>
-                          ))}
+                          <option value="all">🌐 Assign to All Sales Representatives (Shared Pool)</option>
+                          {salesReps
+                            .filter((rep) => rep.role !== 'owner')
+                            .map((rep) => (
+                              <option key={rep._id} value={rep._id}>
+                                {rep.name} ({rep.role === 'sales_admin' ? 'Manager' : 'Rep'})
+                              </option>
+                            ))}
                         </select>
                       </div>
                     </div>

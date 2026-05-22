@@ -176,3 +176,51 @@ export async function sendTrackedEmail({ emailId, toEmail, toName, subject, body
     };
   }
 }
+
+/**
+ * Reusable generic helper to send beautifully styled emails
+ * @param {Object} params
+ * @param {string} params.toEmail - Recipient email address
+ * @param {string} params.toName - Recipient name
+ * @param {string} params.subject - Email subject
+ * @param {string} params.html - HTML content
+ * @param {string} params.text - Plain text content
+ */
+export async function sendEmail({ toEmail, toName, subject, html, text }) {
+  const transporter = getTransporter();
+  if (!transporter) {
+    console.warn(`⚠️ [Simulated Email] To: ${toEmail}, Subject: ${subject}`);
+    return {
+      success: true,
+      simulated: true,
+      message: 'SMTP settings missing. Email simulated.'
+    };
+  }
+
+  try {
+    const fromEmail = process.env.SMTP_FROM_EMAIL || `"Innonsh CRM Suite" <${process.env.SMTP_USER}>`;
+    const mailOptions = {
+      from: fromEmail,
+      to: toName ? `"${toName}" <${toEmail}>` : toEmail,
+      subject: subject,
+      html: html,
+      text: text || ''
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`📧 Email successfully dispatched to ${toEmail}! MessageID: ${info.messageId}`);
+    return {
+      success: true,
+      messageId: info.messageId,
+      message: 'Email dispatched successfully.'
+    };
+  } catch (error) {
+    console.error(`❌ Failed to dispatch email to ${toEmail}:`, error);
+    return {
+      success: false,
+      error: error.message,
+      message: `Failed to send email: ${error.message}`
+    };
+  }
+}
+

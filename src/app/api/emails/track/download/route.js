@@ -3,6 +3,8 @@ import Email from '@/lib/models/Email';
 import Lead from '@/lib/models/Lead';
 import Contact from '@/lib/models/Contact';
 import Notification from '@/lib/models/Notification';
+import { supabase } from '@/lib/supabaseClient';
+import { createNotification } from '@/lib/notifications';
 
 export async function GET(req) {
   // A minimal valid PDF buffer for a real, functional download experience
@@ -54,88 +56,199 @@ export async function GET(req) {
       return getFallbackResponse(inline === 'true');
     }
 
-    await connectToDatabase();
+    let email;
+    if (supabase) {
+      const { data, error: fetchError } = await supabase
+        .from('emails')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
 
-    const email = await Email.findById(id);
-    if (!email) {
-      return getFallbackResponse(inline === 'true');
-    }
-
-    // A. Sub-requests to stream the file (either inline preview or direct attachment download)
-    if (download === 'true' || inline === 'true') {
-      if (email.proposalFileData) {
-        const base64Data = email.proposalFileData.includes(';base64,')
-          ? email.proposalFileData.split(';base64,')[1]
-          : email.proposalFileData;
-
-        const fileBuffer = Buffer.from(base64Data, 'base64');
-        const filename = email.proposalFile || 'Attachment_Tracked.pdf';
-        const mimeType = email.proposalFileMimeType || 'application/octet-stream';
-
-        return new Response(fileBuffer, {
-          headers: {
-            'Content-Type': mimeType,
-            'Content-Disposition': `${inline === 'true' ? 'inline' : 'attachment'}; filename="${filename}"`,
-            'Cache-Control': 'no-store, no-cache, must-revalidate, private',
-          },
-        });
+      if (fetchError || !data) {
+        return getFallbackResponse(inline === 'true');
       }
-      return getFallbackResponse(inline === 'true');
-    }
+      email = data;
 
-    // B. Primary Request: Client clicked the link from the email
-    // 1. Log tracking analytics ONLY ONCE to prevent double counting
-    email.downloadsCount += 1;
-    email.downloadedAt.push(new Date());
-    await email.save();
+      // A. Sub-requests to stream the file (either inline preview or direct attachment download)
+      if (download === 'true' || inline === 'true') {
+        if (email.proposal_file_data) {
+          const base64Data = email.proposal_file_data.includes(';base64,')
+            ? email.proposal_file_data.split(';base64,')[1]
+            : email.proposal_file_data;
 
-    // 2. Trigger Lead Specific Automation & Notifications
-    if (email.leadId) {
-      const lead = await Lead.findById(email.leadId);
-      if (lead) {
-        lead.score = (lead.score || 0) + 20;
-        lead.status = 'Qualified';
-        lead.notes.push({
-          text: `📥 PDF Proposal Downloaded: Client downloaded attached file [${email.proposalFile || 'Proposal.pdf'}] (Lead Score: ${lead.score}, Status auto-shifted to Qualified)`,
-          createdBy: email.sentBy,
-          createdByName: 'Proposal Tracker Engine'
-        });
-        await lead.save();
+          const fileBuffer = Buffer.from(base64Data, 'base64');
+          const filename = email.proposal_file || 'Attachment_Tracked.pdf';
+          const mimeType = email.proposal_file_mime_type || 'application/octet-stream';
 
-        const targetRecipient = lead.assignedTo || email.sentBy;
-        await Notification.create({
-          recipientId: targetRecipient,
-          senderId: null,
-          type: 'Lead',
-          title: '⚡ PDF Proposal Downloaded!',
-          message: `Lead ${lead.firstName} (${lead.company}) has downloaded your proposal "${email.proposalFile || 'Proposal.pdf'}". Lead Score increased by +20 (New Score: ${lead.score}) and status upgraded to Qualified!`,
-          link: '/dashboard/leads'
-        });
+          return new Response(fileBuffer, {
+            headers: {
+              'Content-Type': mimeType,
+              'Content-Disposition': `${inline === 'true' ? 'inline' : 'attachment'}; filename="${filename}"`,
+              'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+            },
+          });
+        }
+        return getFallbackResponse(inline === 'true');
       }
-    } else if (email.contactId) {
-      const contact = await Contact.findById(email.contactId);
-      if (contact) {
-        contact.notes.push({
-          text: `📥 PDF Proposal Downloaded: Client downloaded attached file [${email.proposalFile || 'Proposal.pdf'}]`,
-          createdBy: email.sentBy,
-          createdByName: 'Proposal Tracker Engine'
-        });
-        await contact.save();
 
-        const targetRecipient = contact.assignedTo || email.sentBy;
-        await Notification.create({
-          recipientId: targetRecipient,
-          senderId: null,
-          type: 'System',
-          title: '⚡ PDF Proposal Downloaded!',
-          message: `Contact ${contact.firstName} (${contact.company}) downloaded your proposal "${email.proposalFile || 'Proposal.pdf'}".`,
-          link: '/dashboard/contacts'
-        });
+      // B. Primary Request: Client clicked the link from the email
+      // 1. Log tracking analytics ONLY ONCE to prevent double counting
+      const currentDownloadedAt = Array.isArray(email.downloaded_at) ? email.downloaded_at : [];
+      const updatedDownloadsCount = (email.downloads_count || 0) + 1;
+
+      const { error: updateError } = await supabase
+        .from('emails')
+        .update({
+          downloads_count: updatedDownloadsCount,
+          downloaded_at: [...currentDownloadedAt, new Date().toISOString()]
+        })
+        .eq('id', id);
+
+      if (updateError) {
+        console.error('Supabase update downloads count error:', updateError);
+        return getFallbackResponse(false);
+      }
+
+      // 2. Trigger Lead Specific Automation & Notifications
+      if (email.lead_id) {
+        const { data: lead } = await supabase
+          .from('leads')
+          .select('*')
+          .eq('id', email.lead_id)
+          .maybeSingle();
+
+        if (lead) {
+          const newScore = (lead.score || 0) + 20;
+          await supabase
+            .from('leads')
+            .update({
+              score: newScore,
+              status: 'Qualified'
+            })
+            .eq('id', lead.id);
+
+          const noteText = `📥 PDF Proposal Downloaded: Client downloaded attached file [${email.proposal_file || 'Proposal.pdf'}] (Lead Score: ${newScore}, Status auto-shifted to Qualified)`;
+          await supabase.from('lead_notes').insert([{
+            lead_id: lead.id,
+            text: noteText,
+            created_by: email.sent_by,
+            created_by_name: 'Proposal Tracker Engine'
+          }]);
+
+          const targetRecipient = lead.assigned_to || email.sent_by;
+          await createNotification(
+            targetRecipient,
+            'Lead',
+            '⚡ PDF Proposal Downloaded!',
+            `Lead ${lead.first_name} (${lead.company || ''}) has downloaded your proposal "${email.proposal_file || 'Proposal.pdf'}". Lead Score increased by +20 (New Score: ${newScore}) and status upgraded to Qualified!`,
+            '/dashboard/leads',
+            null
+          );
+        }
+      } else if (email.contact_id) {
+        const { data: contact } = await supabase
+          .from('contacts')
+          .select('*')
+          .eq('id', email.contact_id)
+          .maybeSingle();
+
+        if (contact) {
+          const targetRecipient = contact.assigned_to || email.sent_by;
+          await createNotification(
+            targetRecipient,
+            'System',
+            '⚡ PDF Proposal Downloaded!',
+            `Contact ${contact.first_name} (${contact.company || ''}) downloaded your proposal "${email.proposal_file || 'Proposal.pdf'}".`,
+            '/dashboard/contacts',
+            null
+          );
+        }
+      }
+    } else {
+      await connectToDatabase();
+
+      const mongoEmail = await Email.findById(id);
+      if (!mongoEmail) {
+        return getFallbackResponse(inline === 'true');
+      }
+      email = mongoEmail;
+
+      // A. Sub-requests to stream the file (either inline preview or direct attachment download)
+      if (download === 'true' || inline === 'true') {
+        if (email.proposalFileData) {
+          const base64Data = email.proposalFileData.includes(';base64,')
+            ? email.proposalFileData.split(';base64,')[1]
+            : email.proposalFileData;
+
+          const fileBuffer = Buffer.from(base64Data, 'base64');
+          const filename = email.proposalFile || 'Attachment_Tracked.pdf';
+          const mimeType = email.proposalFileMimeType || 'application/octet-stream';
+
+          return new Response(fileBuffer, {
+            headers: {
+              'Content-Type': mimeType,
+              'Content-Disposition': `${inline === 'true' ? 'inline' : 'attachment'}; filename="${filename}"`,
+              'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+            },
+          });
+        }
+        return getFallbackResponse(inline === 'true');
+      }
+
+      // B. Primary Request: Client clicked the link from the email
+      // 1. Log tracking analytics ONLY ONCE to prevent double counting
+      email.downloadsCount += 1;
+      email.downloadedAt.push(new Date());
+      await email.save();
+
+      // 2. Trigger Lead Specific Automation & Notifications
+      if (email.leadId) {
+        const lead = await Lead.findById(email.leadId);
+        if (lead) {
+          lead.score = (lead.score || 0) + 20;
+          lead.status = 'Qualified';
+          lead.notes.push({
+            text: `📥 PDF Proposal Downloaded: Client downloaded attached file [${email.proposalFile || 'Proposal.pdf'}] (Lead Score: ${lead.score}, Status auto-shifted to Qualified)`,
+            createdBy: email.sentBy,
+            createdByName: 'Proposal Tracker Engine'
+          });
+          await lead.save();
+
+          const targetRecipient = lead.assignedTo || email.sentBy;
+          await Notification.create({
+            recipientId: targetRecipient,
+            senderId: null,
+            type: 'Lead',
+            title: '⚡ PDF Proposal Downloaded!',
+            message: `Lead ${lead.firstName} (${lead.company}) has downloaded your proposal "${email.proposalFile || 'Proposal.pdf'}". Lead Score increased by +20 (New Score: ${lead.score}) and status upgraded to Qualified!`,
+            link: '/dashboard/leads'
+          });
+        }
+      } else if (email.contactId) {
+        const contact = await Contact.findById(email.contactId);
+        if (contact) {
+          contact.notes.push({
+            text: `📥 PDF Proposal Downloaded: Client downloaded attached file [${email.proposalFile || 'Proposal.pdf'}]`,
+            createdBy: email.sentBy,
+            createdByName: 'Proposal Tracker Engine'
+          });
+          await contact.save();
+
+          const targetRecipient = contact.assignedTo || email.sentBy;
+          await Notification.create({
+            recipientId: targetRecipient,
+            senderId: null,
+            type: 'System',
+            title: '⚡ PDF Proposal Downloaded!',
+            message: `Contact ${contact.firstName} (${contact.company}) downloaded your proposal "${email.proposalFile || 'Proposal.pdf'}".`,
+            link: '/dashboard/contacts'
+          });
+        }
       }
     }
 
     // 3. Render a beautiful, premium, branded Innonsh-style Proposal Landing Portal
-    const filename = email.proposalFile || 'Proposal.pdf';
+    const filename = email.proposal_file || email.proposalFile || 'Proposal.pdf';
     const htmlContent = `
 <!DOCTYPE html>
 <html lang="en">

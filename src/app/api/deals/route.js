@@ -1,5 +1,7 @@
 import connectToDatabase from '@/lib/db';
 import Deal from '@/lib/models/Deal';
+import { supabase } from '@/lib/supabaseClient';
+import { mapDealToFrontend } from '@/lib/dbMapper';
 import { getUserFromRequest } from '@/lib/auth';
 import { NextResponse } from 'next/server';
 
@@ -15,34 +17,66 @@ export async function GET(req) {
       );
     }
 
-    await connectToDatabase();
-
     const { searchParams } = new URL(req.url);
     const stage = searchParams.get('stage') || '';
 
-    // 1. Build dynamic MongoDB query filters
-    const query = {};
+    if (supabase) {
+      let queryBuilder = supabase
+        .from('deals')
+        .select('*, users(id, name, email)');
 
-    // 2. STICT ROLE-BASED ACCESS CONTROL (Deals Isolation)
-    if (decodedUser.role === 'sales_rep') {
-      // Sales Representative can ONLY see deals assigned directly to them
-      query.assignedTo = decodedUser.id;
+      // STRICT ROLE-BASED ACCESS CONTROL (Deals Isolation)
+      if (decodedUser.role === 'sales_rep') {
+        // Sales Representative can ONLY see deals assigned directly to them
+        queryBuilder = queryBuilder.eq('assigned_to', decodedUser.id);
+      }
+
+      if (stage) {
+        queryBuilder = queryBuilder.eq('stage', stage);
+      }
+
+      const { data, error } = await queryBuilder.order('updated_at', { ascending: false });
+
+      if (error) {
+        console.error('Supabase fetch deals error:', error);
+        throw error;
+      }
+
+      const deals = (data || []).map(mapDealToFrontend);
+
+      return NextResponse.json({
+        success: true,
+        count: deals.length,
+        deals,
+      });
+
+    } else {
+      await connectToDatabase();
+
+      // 1. Build dynamic MongoDB query filters
+      const query = {};
+
+      // 2. STRICT ROLE-BASED ACCESS CONTROL (Deals Isolation)
+      if (decodedUser.role === 'sales_rep') {
+        // Sales Representative can ONLY see deals assigned directly to them
+        query.assignedTo = decodedUser.id;
+      }
+
+      if (stage) {
+        query.stage = stage;
+      }
+
+      // Fetch deals and populate assignee details
+      const deals = await Deal.find(query)
+        .populate('assignedTo', 'name email')
+        .sort({ updatedAt: -1 });
+
+      return NextResponse.json({
+        success: true,
+        count: deals.length,
+        deals,
+      });
     }
-
-    if (stage) {
-      query.stage = stage;
-    }
-
-    // Fetch deals and populate assignee details
-    const deals = await Deal.find(query)
-      .populate('assignedTo', 'name email')
-      .sort({ updatedAt: -1 });
-
-    return NextResponse.json({
-      success: true,
-      count: deals.length,
-      deals,
-    });
   } catch (error) {
     console.error('Fetch deals error:', error);
     return NextResponse.json(
@@ -51,3 +85,4 @@ export async function GET(req) {
     );
   }
 }
+

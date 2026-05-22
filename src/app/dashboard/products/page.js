@@ -424,10 +424,9 @@ export default function ProductsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Unit Base Price (INR) *</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Unit Base Price (INR)</label>
                   <input
                     type="number"
-                    required
                     min="0"
                     placeholder="E.g. 75000"
                     value={price}
