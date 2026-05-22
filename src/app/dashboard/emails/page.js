@@ -31,6 +31,7 @@ export default function EmailHubPage() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [activeTab, setActiveTab] = useState('leads'); // leads or contacts
+  const [syncing, setSyncing] = useState(false);
 
   // Form states
   const [targetId, setTargetId] = useState('');
@@ -80,6 +81,8 @@ export default function EmailHubPage() {
   const [simulatingDownload, setSimulatingDownload] = useState(false);
   const [simulatingReply, setSimulatingReply] = useState(false);
   const [simulatorStatus, setSimulatorStatus] = useState('');
+  const [customReplyBody, setCustomReplyBody] = useState("Hi team, the proposal looks amazing. Let's schedule a call tomorrow to finalize!");
+  const [activeConversationEmail, setActiveConversationEmail] = useState(null);
 
   // Search/Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -366,7 +369,9 @@ export default function EmailHubPage() {
       setSimulatorStatus('');
 
       const res = await fetch(`/api/emails/track/reply?id=${selectedSimId}`, {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ replyBody: customReplyBody })
       });
       const data = await res.json();
       if (res.ok) {
@@ -380,6 +385,30 @@ export default function EmailHubPage() {
       setSimulatorStatus('❌ Network failure during simulation.');
     } finally {
       setSimulatingReply(false);
+    }
+  };
+
+  // Handle manual real inbox sync via Gmail IMAP
+  const handleSyncEmails = async () => {
+    try {
+      setSyncing(true);
+      setSimulatorStatus('');
+      
+      const res = await fetch('/api/emails/sync');
+      const data = await res.json();
+      
+      if (res.ok) {
+        setSimulatorStatus(`🎉 Sync Success: ${data.message}`);
+        // Reload all metrics and tables
+        await fetchData();
+      } else {
+        setSimulatorStatus(`❌ Sync Failed: ${data.error || 'Server error during mailbox sync.'}`);
+      }
+    } catch (err) {
+      console.error('Email inbox sync error:', err);
+      setSimulatorStatus('❌ Sync Failed: Network connection error or timeout.');
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -791,6 +820,17 @@ export default function EmailHubPage() {
                       </span>
                     </div>
                   </div>
+
+                  {activeEmailForSim.replied && activeEmailForSim.replyBody && (
+                    <div className="mt-2.5 bg-slate-800/80 p-2.5 rounded-lg border border-slate-750 text-left">
+                      <span className="text-[9px] font-bold text-violet-400 uppercase tracking-wider block mb-1">
+                        Received Client Reply Content:
+                      </span>
+                      <p className="text-[10px] text-slate-200 italic font-mono break-words leading-relaxed">
+                        "{activeEmailForSim.replyBody}"
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -832,6 +872,20 @@ export default function EmailHubPage() {
                   </span>
                 </button>
 
+                {/* Custom simulated reply message input */}
+                <div className="bg-violet-50/50 border border-violet-100 p-3 rounded-xl space-y-1.5 text-left">
+                  <label className="text-[9px] font-black text-violet-700 uppercase tracking-wider block">
+                    Custom Simulated Reply Text Body:
+                  </label>
+                  <textarea
+                    value={customReplyBody}
+                    onChange={(e) => setCustomReplyBody(e.target.value)}
+                    rows="2"
+                    placeholder="Enter what the client writes back..."
+                    className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-slate-700 focus:outline-none focus:border-violet-500 transition leading-normal font-sans"
+                  ></textarea>
+                </div>
+
                 {/* Reply trigger */}
                 <button
                   onClick={triggerSimulateReply}
@@ -872,14 +926,26 @@ export default function EmailHubPage() {
             </p>
           </div>
 
-          <div className="w-full md:w-64 shrink-0">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search sent campaigns..."
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-1.5 text-xs font-semibold text-slate-700 focus:outline-none focus:border-indigo-500 transition"
-            />
+          <div className="flex w-full md:w-auto items-center gap-3 shrink-0 flex-wrap md:flex-nowrap">
+            {/* Manual Sync Replies Button */}
+            <button
+              onClick={handleSyncEmails}
+              disabled={syncing}
+              className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-extrabold text-[10px] uppercase tracking-wider rounded-lg shadow-sm border border-emerald-500/20 transition disabled:opacity-50 active:scale-[0.98] cursor-pointer"
+              title="Connect securely to Gmail via IMAP and synchronize real-world client replies in real-time."
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
+              {syncing ? 'Syncing...' : 'Sync Replies 🔄'}
+            </button>
+            <div className="w-full md:w-64">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search sent campaigns..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-1.5 text-xs font-semibold text-slate-700 focus:outline-none focus:border-indigo-500 transition"
+              />
+            </div>
           </div>
         </div>
 
@@ -982,10 +1048,14 @@ export default function EmailHubPage() {
                           </span>
 
                           {/* Reply indicator */}
-                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold border ${email.replied
-                              ? 'bg-violet-50 text-violet-700 border-violet-200'
-                              : 'bg-slate-50 text-slate-500 border-slate-200'
-                            }`}>
+                          <span 
+                            onClick={() => setActiveConversationEmail(email)}
+                            className={`px-2 py-0.5 rounded text-[9px] font-bold border cursor-pointer transition duration-150 active:scale-95 ${email.replied
+                              ? 'bg-violet-100 text-violet-750 border-violet-200 hover:bg-violet-200 hover:shadow-sm'
+                              : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
+                            }`}
+                            title={email.replied ? "View Client Response Content" : "View Outgoing Message Details"}
+                          >
                             {email.replied ? 'Replied 💬' : 'Unreplied'}
                           </span>
                         </div>
@@ -1008,6 +1078,124 @@ export default function EmailHubPage() {
           </div>
         )}
       </div>
+
+      {/* Premium Zoho-style Email Conversation History Modal */}
+      {activeConversationEmail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-all duration-300 animate-fadeIn">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] animate-scaleUp">
+            
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-slate-900 to-indigo-950 px-6 py-4 text-white flex justify-between items-center shrink-0">
+              <div>
+                <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest block font-sans">Zoho-style Email Viewer</span>
+                <h3 className="text-sm font-extrabold truncate max-w-md" title={activeConversationEmail.subject}>
+                  {activeConversationEmail.subject}
+                </h3>
+              </div>
+              <button 
+                onClick={() => setActiveConversationEmail(null)}
+                className="h-8 w-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white font-bold transition cursor-pointer active:scale-95"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Conversation Body - Scrollable */}
+            <div className="p-6 overflow-y-auto space-y-6 bg-slate-50 flex-1 min-h-[300px]">
+              
+              {/* Recipient info & stats badge row */}
+              <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-slate-150 shadow-sm text-xs text-left">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-400 font-medium">To:</span>
+                    <span className="font-extrabold text-slate-800">{getRecipientName(activeConversationEmail)}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px]">
+                    <span className="text-slate-400 font-medium">Sent At:</span>
+                    <span className="text-slate-600 font-semibold font-mono">
+                      {new Date(activeConversationEmail.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold border ${
+                    activeConversationEmail.channel === 'whatsapp'
+                      ? 'bg-green-50 text-green-700 border-green-200'
+                      : activeConversationEmail.channel === 'both'
+                        ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                        : 'bg-slate-50 text-slate-500 border-slate-200'
+                  }`}>
+                    {activeConversationEmail.channel === 'whatsapp' ? 'WA 📱' : (activeConversationEmail.channel === 'both' ? 'Both ⚡' : 'Email 📧')}
+                  </span>
+                  <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold border ${
+                    activeConversationEmail.opensCount > 0
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : 'bg-slate-50 text-slate-400 border-slate-200'
+                  }`}>
+                    {activeConversationEmail.opensCount > 0 ? `Opened (${activeConversationEmail.opensCount}x) 👁️` : 'Sent'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Message 1: Outgoing Email Sent by Sales Rep */}
+              <div className="flex flex-col items-end space-y-1">
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider pr-1">
+                  You Sent:
+                </span>
+                <div className="bg-slate-800 text-white rounded-2xl rounded-tr-none px-4 py-3.5 shadow-md border border-slate-700 max-w-[85%] text-left leading-relaxed text-xs">
+                  <p className="whitespace-pre-wrap font-sans">{activeConversationEmail.body}</p>
+                  
+                  {activeConversationEmail.proposalFile && (
+                    <div className="mt-3 pt-2.5 border-t border-slate-700/80 flex items-center justify-between text-[10px] text-sky-300 font-bold font-mono">
+                      <span className="truncate">📎 Attachment: {activeConversationEmail.proposalFile}</span>
+                      <span className="bg-sky-500/10 px-2 py-0.5 rounded border border-sky-400/20 text-[9px] font-semibold font-mono">
+                        {activeConversationEmail.downloadsCount || 0} downloads
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Message 2: Incoming Email Reply from Client */}
+              {activeConversationEmail.replied ? (
+                <div className="flex flex-col items-start space-y-1">
+                  <div className="flex items-center gap-1.5 pl-1">
+                    <span className="text-[9px] text-violet-600 font-black uppercase tracking-wider">
+                      Client Replied:
+                    </span>
+                    <span className="text-[8px] text-slate-400 font-mono">
+                      {activeConversationEmail.repliedAt 
+                        ? new Date(activeConversationEmail.repliedAt).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })
+                        : ''}
+                    </span>
+                  </div>
+                  <div className="bg-gradient-to-br from-violet-50 to-indigo-50 text-slate-850 rounded-2xl rounded-tl-none px-4 py-3.5 shadow-md border border-violet-200 max-w-[85%] text-left leading-relaxed text-xs relative overflow-hidden">
+                    <div className="absolute top-0 right-0 h-10 w-10 bg-gradient-to-bl from-violet-200/20 to-transparent pointer-events-none rounded-bl-full"></div>
+                    <p className="whitespace-pre-wrap font-mono italic text-slate-750 font-semibold">
+                      "{activeConversationEmail.replyBody || "Hi team, the proposal looks amazing. Let's schedule a call tomorrow to finalize!"}"
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="py-4 text-center text-slate-400 italic text-[11px] bg-slate-100/50 rounded-xl border border-dashed border-slate-200">
+                  ⏳ Awaiting response from client. No reply logs registered yet.
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex justify-end gap-2.5 shrink-0">
+              <button
+                onClick={() => setActiveConversationEmail(null)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-350 text-slate-700 text-xs font-extrabold uppercase tracking-wider rounded-xl transition duration-150 active:scale-95 cursor-pointer"
+              >
+                Close View
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }

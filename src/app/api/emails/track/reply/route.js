@@ -22,9 +22,21 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Email not found.' }, { status: 404 });
     }
 
-    // Toggle/Set replied status
+    // Try parsing reply body from request payload
+    let replyBody = "Hi team, the proposal looks amazing. Let's schedule a call tomorrow to finalize!";
+    try {
+      const reqBody = await req.json();
+      if (reqBody && reqBody.replyBody && reqBody.replyBody.trim()) {
+        replyBody = reqBody.replyBody.trim();
+      }
+    } catch (e) {
+      // Body may be empty or not JSON, fallback to default
+    }
+
+    // Set replied status and body
     email.replied = true;
     email.repliedAt = new Date();
+    email.replyBody = replyBody;
     await email.save();
 
     let automationsTriggered = [];
@@ -36,9 +48,9 @@ export async function POST(req) {
         // Boost Lead Score by +30
         lead.score = (lead.score || 0) + 30;
 
-        // Add follow-up timeline action
+        // Add follow-up timeline action with reply content
         lead.notes.push({
-          text: `💬 Client Replied to Proposal: Email subject "${email.subject}" (Lead Score: ${lead.score})`,
+          text: `💬 Client Replied (Subject: "${email.subject}"): "${replyBody}"`,
           createdBy: email.sentBy,
           createdByName: 'Reply Tracker Engine'
         });
@@ -55,7 +67,7 @@ export async function POST(req) {
           dueDate: taskDueDate,
           priority: 'High',
           status: 'Pending',
-          notes: `Automated Task: The client responded to proposal email: "${email.subject}". Review their response and finalize deal requirements.`,
+          notes: `Automated Task: The client responded to proposal email: "${email.subject}".\n\nReply Message:\n"${replyBody}"\n\nReview their response and finalize deal requirements.`,
           assignedTo: assignedRep,
           leadId: lead._id
         });
@@ -67,7 +79,7 @@ export async function POST(req) {
           senderId: null,
           type: 'Lead',
           title: '💬 Client Replied to Proposal!',
-          message: `Lead ${lead.firstName} (${lead.company}) has replied to your proposal email. High-priority follow-up task has been automatically assigned to you. Lead Score boosted by +30 (New Score: ${lead.score})!`,
+          message: `Lead ${lead.firstName} (${lead.company}) replied: "${replyBody.slice(0, 60)}${replyBody.length > 60 ? '...' : ''}" - High-priority follow-up task has been automatically assigned to you. Lead Score boosted by +30 (New Score: ${lead.score})!`,
           link: '/dashboard/tasks'
         });
         automationsTriggered.push('notification_sent');
@@ -76,7 +88,7 @@ export async function POST(req) {
       const contact = await Contact.findById(email.contactId);
       if (contact) {
         contact.notes.push({
-          text: `💬 Client Replied: Email subject "${email.subject}"`,
+          text: `💬 Client Replied (Subject: "${email.subject}"): "${replyBody}"`,
           createdBy: email.sentBy,
           createdByName: 'Reply Tracker Engine'
         });
@@ -92,7 +104,7 @@ export async function POST(req) {
           dueDate: taskDueDate,
           priority: 'High',
           status: 'Pending',
-          notes: `Automated Task: The contact responded to email: "${email.subject}". Please reach out to them within 24 hours.`,
+          notes: `Automated Task: The contact responded to email: "${email.subject}".\n\nReply Message:\n"${replyBody}"\n\nPlease reach out to them within 24 hours.`,
           assignedTo: assignedRep,
           contactId: contact._id
         });
@@ -103,7 +115,7 @@ export async function POST(req) {
           senderId: null,
           type: 'System',
           title: '💬 Contact Replied!',
-          message: `Contact ${contact.firstName} (${contact.company}) has replied to your email. High-priority follow-up task has been automatically created.`,
+          message: `Contact ${contact.firstName} (${contact.company}) replied: "${replyBody.slice(0, 60)}${replyBody.length > 60 ? '...' : ''}" - High-priority follow-up task has been automatically created.`,
           link: '/dashboard/tasks'
         });
         automationsTriggered.push('notification_sent');

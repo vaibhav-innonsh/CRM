@@ -53,6 +53,10 @@ const EmailSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    replyBody: {
+      type: String,
+      default: '',
+    },
     proposalFile: {
       type: String,
       default: '',
