@@ -134,7 +134,7 @@ export async function GET(req) {
       }
     }
 
-    // 3. Render a beautiful, premium, branded Zoho-style Proposal Landing Portal
+    // 3. Render a beautiful, premium, branded Innonsh-style Proposal Landing Portal
     const filename = email.proposalFile || 'Proposal.pdf';
     const htmlContent = `
 <!DOCTYPE html>

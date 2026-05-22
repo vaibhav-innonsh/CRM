@@ -59,7 +59,7 @@ export default function EmailHubPage() {
     const reader = new FileReader();
     reader.onloadend = () => {
       setProposalFileData(reader.result);
-      setFormSuccess(`File "${file.name}" ready to be dispatched with active Zoho-style tracking!`);
+      setFormSuccess(`File "${file.name}" ready to be dispatched with active Innonsh-style tracking!`);
     };
     reader.onerror = () => {
       setFormError('Failed to parse the selected file.');
@@ -75,13 +75,8 @@ export default function EmailHubPage() {
     setFormError('');
   };
 
-  // Simulator states
-  const [selectedSimId, setSelectedSimId] = useState('');
-  const [simulatingOpen, setSimulatingOpen] = useState(false);
-  const [simulatingDownload, setSimulatingDownload] = useState(false);
-  const [simulatingReply, setSimulatingReply] = useState(false);
-  const [simulatorStatus, setSimulatorStatus] = useState('');
-  const [customReplyBody, setCustomReplyBody] = useState("Hi team, the proposal looks amazing. Let's schedule a call tomorrow to finalize!");
+  // Sync Alert states
+  const [syncAlert, setSyncAlert] = useState(null);
   const [activeConversationEmail, setActiveConversationEmail] = useState(null);
 
   // Search/Filters
@@ -124,10 +119,6 @@ export default function EmailHubPage() {
         setTargetId(contactsData.contacts[0]._id);
       }
 
-      // Autofill first email in simulator dropdown if empty and emails exist
-      if (emailsData.emails?.length > 0 && !selectedSimId) {
-        setSelectedSimId(emailsData.emails[0]._id);
-      }
     } catch (err) {
       console.error('Error fetching email campaign data:', err);
     } finally {
@@ -195,10 +186,6 @@ export default function EmailHubPage() {
         setProposalFile('Proposal.pdf');
         // Reload statistics and feed list
         await fetchData();
-        // Automatically select the newly sent email for client action simulation
-        if (data.email) {
-          setSelectedSimId(data.email._id);
-        }
       } else {
         setFormError(data.error || 'Failed to dispatch campaign.');
       }
@@ -294,10 +281,6 @@ export default function EmailHubPage() {
         
         // Refresh statistics and list
         await fetchData();
-        
-        if (data.email) {
-          setSelectedSimId(data.email._id);
-        }
       } else {
         setFormError(data.error || 'Failed to generate proposal log.');
       }
@@ -309,104 +292,34 @@ export default function EmailHubPage() {
     }
   };
 
-  // Automated Tracking Client Simulator Operations
-  const triggerSimulateOpen = async () => {
-    if (!selectedSimId) return;
-    try {
-      setSimulatingOpen(true);
-      setSimulatorStatus('');
-
-      const res = await fetch(`/api/emails/track/open?id=${selectedSimId}`);
-      if (res.ok) {
-        setSimulatorStatus('🎉 Simulation Success: Email open tracked! Tracking pixel loaded, status shifted, and rep alert issued.');
-        await fetchData();
-      } else {
-        setSimulatorStatus('❌ Simulation Failed to process open action.');
-      }
-    } catch (err) {
-      console.error(err);
-      setSimulatorStatus('❌ Network failure during simulation.');
-    } finally {
-      setSimulatingOpen(false);
-    }
-  };
-
-  const triggerSimulateDownload = async () => {
-    if (!selectedSimId) return;
-    try {
-      setSimulatingDownload(true);
-      setSimulatorStatus('');
-
-      // Simulate by loading redirect URL dynamically to trigger DB action
-      const res = await fetch(`/api/emails/track/download?id=${selectedSimId}`);
-      if (res.ok) {
-        setSimulatorStatus('🎉 Simulation Success: PDF download tracked! Lead Score +20, Lead status shifted to Qualified, and notification popped.');
-
-        // Let's actually trigger a browser file download of the tracked PDF
-        const link = document.createElement('a');
-        link.href = `/api/emails/track/download?id=${selectedSimId}`;
-        link.setAttribute('download', proposalFile || 'Proposal.pdf');
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-
-        await fetchData();
-      } else {
-        setSimulatorStatus('❌ Simulation Failed to process download action.');
-      }
-    } catch (err) {
-      console.error(err);
-      setSimulatorStatus('❌ Network failure during simulation.');
-    } finally {
-      setSimulatingDownload(false);
-    }
-  };
-
-  const triggerSimulateReply = async () => {
-    if (!selectedSimId) return;
-    try {
-      setSimulatingReply(true);
-      setSimulatorStatus('');
-
-      const res = await fetch(`/api/emails/track/reply?id=${selectedSimId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ replyBody: customReplyBody })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setSimulatorStatus('🎉 Simulation Success: Client response logged! Lead Score +30, high-priority follow-up Task automatically scheduled for tomorrow, and team alert triggered.');
-        await fetchData();
-      } else {
-        setSimulatorStatus(`❌ Simulation Failed: ${data.error || 'Unknown error'}`);
-      }
-    } catch (err) {
-      console.error(err);
-      setSimulatorStatus('❌ Network failure during simulation.');
-    } finally {
-      setSimulatingReply(false);
-    }
-  };
-
   // Handle manual real inbox sync via Gmail IMAP
   const handleSyncEmails = async () => {
     try {
       setSyncing(true);
-      setSimulatorStatus('');
+      setSyncAlert(null);
       
       const res = await fetch('/api/emails/sync');
       const data = await res.json();
       
       if (res.ok) {
-        setSimulatorStatus(`🎉 Sync Success: ${data.message}`);
+        setSyncAlert({
+          type: 'success',
+          message: data.message || 'Gmail synchronization completed!'
+        });
         // Reload all metrics and tables
         await fetchData();
       } else {
-        setSimulatorStatus(`❌ Sync Failed: ${data.error || 'Server error during mailbox sync.'}`);
+        setSyncAlert({
+          type: 'error',
+          message: data.error || 'Server error during mailbox sync.'
+        });
       }
     } catch (err) {
       console.error('Email inbox sync error:', err);
-      setSimulatorStatus('❌ Sync Failed: Network connection error or timeout.');
+      setSyncAlert({
+        type: 'error',
+        message: 'Network connection error or timeout.'
+      });
     } finally {
       setSyncing(false);
     }
@@ -460,7 +373,7 @@ export default function EmailHubPage() {
     return { label: 'General', color: 'bg-slate-100 text-slate-700 border-slate-200' };
   };
 
-  const activeEmailForSim = emails.find(e => e._id === selectedSimId);
+
 
   return (
     <div className="space-y-6">
@@ -547,371 +460,226 @@ export default function EmailHubPage() {
         </div>
       </div>
 
-      {/* Main Double Column Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Email Compose Form */}
-        <div className="lg:col-span-7 bg-white border border-slate-200 rounded-xl shadow-sm p-6 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between pb-4 border-b border-slate-200 mb-5">
-              <h2 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
-                <Mail className="h-4 w-4 text-emerald-500" /> Compose Tracked Sales Proposal
-              </h2>
-              <div className="flex bg-slate-100 rounded-lg p-0.5 text-xs font-bold shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('leads')}
-                  className={`px-3 py-1 rounded-md transition-all cursor-pointer ${activeTab === 'leads' ? 'bg-white text-indigo-700 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                >
-                  To Lead
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('contacts')}
-                  className={`px-3 py-1 rounded-md transition-all cursor-pointer ${activeTab === 'contacts' ? 'bg-white text-teal-700 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                >
-                  To Contact
-                </button>
-              </div>
-            </div>
-
-            <form onSubmit={handleSendEmail} className="space-y-4 text-left">
-              {/* Recipient Dropdown Selection */}
-              <div>
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1">
-                  Target Recipient ({activeTab === 'leads' ? 'Leads Directory' : 'Contacts Directory'})
-                </label>
-                {activeTab === 'leads' ? (
-                  leads.length === 0 ? (
-                    <div className="text-xs text-rose-500 bg-rose-50 p-2.5 rounded-lg border border-rose-100 flex items-center gap-2">
-                      <AlertCircle className="h-4 w-4 shrink-0" />
-                      No leads exist in the directory. Please create a lead first!
-                    </div>
-                  ) : (
-                    <select
-                      value={targetId}
-                      onChange={(e) => setTargetId(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-medium text-slate-700 focus:outline-none focus:border-indigo-500 transition"
-                    >
-                      {leads.map(l => (
-                        <option key={l._id} value={l._id}>
-                          {l.firstName} {l.lastName} - {l.company} ({l.email || 'No email'})
-                        </option>
-                      ))}
-                    </select>
-                  )
-                ) : (
-                  contacts.length === 0 ? (
-                    <div className="text-xs text-rose-500 bg-rose-50 p-2.5 rounded-lg border border-rose-100 flex items-center gap-2">
-                      <AlertCircle className="h-4 w-4 shrink-0" />
-                      No contacts exist in the directory. Please create a contact first!
-                    </div>
-                  ) : (
-                    <select
-                      value={targetId}
-                      onChange={(e) => setTargetId(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-medium text-slate-700 focus:outline-none focus:border-teal-500 transition"
-                    >
-                      {contacts.map(c => (
-                        <option key={c._id} value={c._id}>
-                          {c.firstName} {c.lastName} - {c.company} ({c.email || 'No email'})
-                        </option>
-                      ))}
-                    </select>
-                  )
-                )}
-              </div>
-
-              {/* Proposal File and Subject */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1">
-                    Embedded Proposal Document (Zoho-Style)
-                  </label>
-                  <div className="relative flex items-center gap-2">
-                    <label className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-350 rounded-lg text-xs font-bold text-slate-700 cursor-pointer transition active:scale-95">
-                      <FileText className="h-4 w-4 text-indigo-500" />
-                      Choose File
-                      <input
-                        type="file"
-                        accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
-                        onChange={handleFileChange}
-                        className="hidden"
-                      />
-                    </label>
-                    {proposalFileData ? (
-                      <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-1.5 rounded-lg text-[10px] font-extrabold max-w-[180px] truncate">
-                        <span className="truncate">📎 {proposalFile}</span>
-                        <button
-                          type="button"
-                          onClick={handleRemoveFile}
-                          className="text-rose-500 hover:text-rose-700 font-bold shrink-0 ml-1 cursor-pointer"
-                          title="Remove File"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="text-[10px] text-slate-400 italic">No real file selected (default tracked PDF will be used)</span>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1">
-                    Campaign Subject
-                  </label>
-                  <input
-                    type="text"
-                    value={subject}
-                    onChange={(e) => setSubject(e.target.value)}
-                    placeholder="Proposal Estimate for {{company}}"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-medium text-slate-700 focus:outline-none focus:border-indigo-500 transition"
-                  />
-                </div>
-              </div>
-
-              {/* Email Body & Templates Guide */}
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">
-                    Email Body Content
-                  </label>
-                  <span className="text-[8px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
-                    Use placeholders: {"{{firstName}}"}, {"{{name}}"}, {"{{company}}"}
-                  </span>
-                </div>
-                <textarea
-                  value={body}
-                  onChange={(e) => setBody(e.target.value)}
-                  rows="9"
-                  placeholder={"Hi {{firstName}},\n\nI hope you are doing well!\n\nI have reviewed your requirements from {{company}} and prepared a detailed proposal for our corporate CRM implementation services.\n\nPlease find the attached estimate ({{proposalFile}}) and download it to review the pricing details.\n\nLooking forward to hearing your thoughts!\n\nBest regards,\nSales Team"}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 text-xs font-medium text-slate-700 font-mono focus:outline-none focus:border-indigo-500 transition leading-relaxed"
-                ></textarea>
-              </div>
-
-              {formSuccess && (
-                <div className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-100 p-3 rounded-lg flex items-start gap-2.5 leading-relaxed">
-                  <CheckCircle2 className="h-4.5 w-4.5 text-emerald-500 shrink-0 mt-0.5" />
-                  <span>{formSuccess}</span>
-                </div>
-              )}
-
-              {formError && (
-                <div className="text-xs text-rose-600 bg-rose-50 border border-rose-100 p-3 rounded-lg flex items-start gap-2.5 leading-relaxed">
-                  <AlertCircle className="h-4.5 w-4.5 text-rose-500 shrink-0 mt-0.5" />
-                  <span>{formError}</span>
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                {/* Email Only Button */}
-                <button
-                  type="submit"
-                  disabled={sending || (activeTab === 'leads' && leads.length === 0) || (activeTab === 'contacts' && contacts.length === 0)}
-                  className="flex items-center justify-center gap-1.5 px-3 py-3 bg-gradient-to-r from-slate-700 to-slate-800 hover:from-slate-800 hover:to-slate-900 text-white font-extrabold text-[10px] uppercase tracking-wider rounded-xl shadow-md transition disabled:opacity-50 active:scale-[0.99] cursor-pointer"
-                >
-                  <Mail className="h-3.5 w-3.5 shrink-0" />
-                  {sending ? 'Sending...' : 'Email Only'}
-                </button>
-
-                {/* WhatsApp Only Button */}
-                <button
-                  type="button"
-                  onClick={(e) => handleSendWhatsApp(e, 'whatsapp')}
-                  disabled={sending || (activeTab === 'leads' && leads.length === 0) || (activeTab === 'contacts' && contacts.length === 0)}
-                  className="flex items-center justify-center gap-1.5 px-3 py-3 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-extrabold text-[10px] uppercase tracking-wider rounded-xl shadow-md transition disabled:opacity-50 active:scale-[0.99] cursor-pointer"
-                >
-                  <MessageSquare className="h-3.5 w-3.5 shrink-0" />
-                  {sending ? 'Generating...' : 'WhatsApp Only'}
-                </button>
-
-                {/* Both Email & WhatsApp Button */}
-                <button
-                  type="button"
-                  onClick={(e) => handleSendWhatsApp(e, 'both')}
-                  disabled={sending || (activeTab === 'leads' && leads.length === 0) || (activeTab === 'contacts' && contacts.length === 0)}
-                  className="flex items-center justify-center gap-1.5 px-3 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-extrabold text-[10px] uppercase tracking-wider rounded-xl shadow-md transition disabled:opacity-50 active:scale-[0.99] cursor-pointer"
-                >
-                  <Sparkles className="h-3.5 w-3.5 text-yellow-300 animate-pulse shrink-0" />
-                  {sending ? 'Both...' : 'Both (Email & WA)'}
-                </button>
-              </div>
-            </form>
+      {/* Compose Tracked Sales Proposal Form */}
+      <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+        <div className="flex items-center justify-between pb-4 border-b border-slate-200 mb-5">
+          <h2 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+            <Mail className="h-4 w-4 text-emerald-500" /> Compose Tracked Sales Proposal
+          </h2>
+          <div className="flex bg-slate-100 rounded-lg p-0.5 text-xs font-bold shrink-0">
+            <button
+              type="button"
+              onClick={() => setActiveTab('leads')}
+              className={`px-3 py-1 rounded-md transition-all cursor-pointer ${activeTab === 'leads' ? 'bg-white text-indigo-700 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-800'
+                }`}
+            >
+              To Lead
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('contacts')}
+              className={`px-3 py-1 rounded-md transition-all cursor-pointer ${activeTab === 'contacts' ? 'bg-white text-teal-700 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-800'
+                }`}
+            >
+              To Contact
+            </button>
           </div>
         </div>
 
-        {/* Right Column: Dynamic Simulator Sandbox */}
-        <div className="lg:col-span-5 bg-white border border-slate-200 rounded-xl shadow-sm p-6 flex flex-col justify-between">
-          <div className="space-y-5 text-left">
-            <div className="pb-4 border-b border-slate-200">
-              <h2 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
-                <Flame className="h-4 w-4 text-rose-500 animate-bounce" /> Visual Engagement Simulator
-              </h2>
-              <p className="text-[10px] text-slate-400 mt-1 font-medium leading-relaxed">
-                Test the automation pipelines (Lead Score increments, notification alerts, status shifts, auto-created tasks) immediately.
-              </p>
-            </div>
-
-            {/* Select Sent Email dropdown */}
-            <div>
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1">
-                Select Tracked Email to Simulate Client Actions
-              </label>
-              {emails.length === 0 ? (
-                <div className="text-xs text-slate-400 italic bg-slate-50 p-4 rounded-xl border border-dashed border-slate-200 text-center">
-                  No sent campaign emails found. Create and dispatch a proposal to start simulating actions!
+        <form onSubmit={handleSendEmail} className="space-y-4 text-left">
+          {/* Recipient Dropdown Selection */}
+          <div>
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1">
+              Target Recipient ({activeTab === 'leads' ? 'Leads Directory' : 'Contacts Directory'})
+            </label>
+            {activeTab === 'leads' ? (
+              leads.length === 0 ? (
+                <div className="text-xs text-rose-500 bg-rose-50 p-2.5 rounded-lg border border-rose-100 flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  No leads exist in the directory. Please create a lead first!
                 </div>
               ) : (
                 <select
-                  value={selectedSimId}
-                  onChange={(e) => {
-                    setSelectedSimId(e.target.value);
-                    setSimulatorStatus('');
-                  }}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:border-indigo-500 transition"
+                  value={targetId}
+                  onChange={(e) => setTargetId(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-medium text-slate-700 focus:outline-none focus:border-indigo-500 transition"
                 >
-                  {emails.map((e, idx) => (
-                    <option key={e._id} value={e._id}>
-                      #{emails.length - idx} - Recipient: {getRecipientName(e).slice(0, 35)}... - Subject: "{e.subject.slice(0, 20)}..."
+                  {leads.map(l => (
+                    <option key={l._id} value={l._id}>
+                      {l.firstName} {l.lastName} - {l.company} ({l.email || 'No email'})
                     </option>
                   ))}
                 </select>
-              )}
-            </div>
-
-            {/* Selected Email Live Statistics HUD */}
-            {activeEmailForSim && (
-              <div className="bg-slate-900 text-white rounded-xl p-4.5 shadow-inner border border-slate-800 relative overflow-hidden">
-                <div className="absolute top-0 right-0 h-16 w-16 bg-gradient-to-bl from-indigo-500/10 to-transparent pointer-events-none rounded-bl-full"></div>
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-2 border-b border-slate-800 pb-1.5">
-                  Selected Email Campaign Metrics
-                </span>
-
-                <div className="space-y-2.5 text-xs">
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-400 font-medium">To Recipient:</span>
-                    <span className="font-bold text-indigo-300 truncate max-w-[200px]" title={getRecipientName(activeEmailForSim)}>
-                      {getRecipientName(activeEmailForSim)}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-400 font-medium">Proposal Attachment:</span>
-                    <span className="font-mono text-[10px] text-sky-300 font-bold">
-                      📎 {activeEmailForSim.proposalFile || 'None'}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2.5 pt-2 border-t border-slate-800 text-center">
-                    <div className="bg-slate-800 p-2 rounded-lg border border-slate-700">
-                      <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest block">Opens</span>
-                      <span className="text-sm font-black text-emerald-400 block mt-0.5">{activeEmailForSim.opensCount || 0}</span>
-                    </div>
-                    <div className="bg-slate-800 p-2 rounded-lg border border-slate-700">
-                      <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest block">Downloads</span>
-                      <span className="text-sm font-black text-sky-400 block mt-0.5">{activeEmailForSim.downloadsCount || 0}</span>
-                    </div>
-                    <div className="bg-slate-800 p-2 rounded-lg border border-slate-700">
-                      <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest block">Replied?</span>
-                      <span className={`text-[10px] font-black block mt-1.5 uppercase ${activeEmailForSim.replied ? 'text-violet-400' : 'text-slate-400'}`}>
-                        {activeEmailForSim.replied ? 'Yes 💬' : 'No'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {activeEmailForSim.replied && activeEmailForSim.replyBody && (
-                    <div className="mt-2.5 bg-slate-800/80 p-2.5 rounded-lg border border-slate-750 text-left">
-                      <span className="text-[9px] font-bold text-violet-400 uppercase tracking-wider block mb-1">
-                        Received Client Reply Content:
-                      </span>
-                      <p className="text-[10px] text-slate-200 italic font-mono break-words leading-relaxed">
-                        "{activeEmailForSim.replyBody}"
-                      </p>
-                    </div>
-                  )}
+              )
+            ) : (
+              contacts.length === 0 ? (
+                <div className="text-xs text-rose-500 bg-rose-50 p-2.5 rounded-lg border border-rose-100 flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  No contacts exist in the directory. Please create a contact first!
                 </div>
-              </div>
-            )}
-
-            {/* Interactive Control Buttons */}
-            {activeEmailForSim && (
-              <div className="space-y-3 pt-2">
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">
-                  Simulate Client Action Triggers:
-                </span>
-
-                {/* Open trigger */}
-                <button
-                  onClick={triggerSimulateOpen}
-                  disabled={simulatingOpen}
-                  className="w-full flex items-center justify-between px-4 py-3 bg-emerald-50 border border-emerald-200 text-emerald-800 hover:bg-emerald-100 rounded-xl transition duration-200 active:scale-[0.99] font-bold text-xs disabled:opacity-50 cursor-pointer"
+              ) : (
+                <select
+                  value={targetId}
+                  onChange={(e) => setTargetId(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-medium text-slate-700 focus:outline-none focus:border-teal-500 transition"
                 >
-                  <span className="flex items-center gap-2">
-                    <Eye className="h-4 w-4 text-emerald-600 shrink-0" />
-                    1. Simulate Client Open Pixel Loading
-                  </span>
-                  <span className="text-[8px] uppercase tracking-wider bg-emerald-200 text-emerald-950 font-black px-2 py-0.5 rounded font-mono">
-                    {simulatingOpen ? 'Tracking...' : 'FIRE PIXEL'}
-                  </span>
-                </button>
-
-                {/* Download trigger */}
-                <button
-                  onClick={triggerSimulateDownload}
-                  disabled={simulatingDownload || !activeEmailForSim.proposalFile}
-                  className="w-full flex items-center justify-between px-4 py-3 bg-sky-50 border border-sky-200 text-sky-800 hover:bg-sky-100 rounded-xl transition duration-200 active:scale-[0.99] font-bold text-xs disabled:opacity-50 cursor-pointer"
-                >
-                  <span className="flex items-center gap-2">
-                    <Download className="h-4 w-4 text-sky-600 shrink-0" />
-                    2. Simulate Client Downloading PDF Estimate
-                  </span>
-                  <span className="text-[8px] uppercase tracking-wider bg-sky-200 text-sky-950 font-black px-2 py-0.5 rounded font-mono">
-                    {simulatingDownload ? 'Downloading...' : 'SCORE +20'}
-                  </span>
-                </button>
-
-                {/* Custom simulated reply message input */}
-                <div className="bg-violet-50/50 border border-violet-100 p-3 rounded-xl space-y-1.5 text-left">
-                  <label className="text-[9px] font-black text-violet-700 uppercase tracking-wider block">
-                    Custom Simulated Reply Text Body:
-                  </label>
-                  <textarea
-                    value={customReplyBody}
-                    onChange={(e) => setCustomReplyBody(e.target.value)}
-                    rows="2"
-                    placeholder="Enter what the client writes back..."
-                    className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-slate-700 focus:outline-none focus:border-violet-500 transition leading-normal font-sans"
-                  ></textarea>
-                </div>
-
-                {/* Reply trigger */}
-                <button
-                  onClick={triggerSimulateReply}
-                  disabled={simulatingReply}
-                  className="w-full flex items-center justify-between px-4 py-3 bg-violet-50 border border-violet-200 text-violet-800 hover:bg-violet-100 rounded-xl transition duration-200 active:scale-[0.99] font-bold text-xs disabled:opacity-50 cursor-pointer"
-                >
-                  <span className="flex items-center gap-2">
-                    <Reply className="h-4 w-4 text-violet-600 shrink-0" />
-                    3. Simulate Client Replying to Proposal
-                  </span>
-                  <span className="text-[8px] uppercase tracking-wider bg-violet-200 text-violet-950 font-black px-2 py-0.5 rounded font-mono">
-                    {simulatingReply ? 'Simulating...' : 'SCORE +30 & TASK'}
-                  </span>
-                </button>
-              </div>
-            )}
-
-            {/* Simulation Status Logger */}
-            {simulatorStatus && (
-              <div className="bg-slate-50 border border-slate-200 p-3 rounded-lg text-xs leading-relaxed text-slate-700 flex items-start gap-2.5">
-                <Activity className="h-4 w-4 text-indigo-500 shrink-0 mt-0.5 animate-pulse" />
-                <span className="font-semibold">{simulatorStatus}</span>
-              </div>
+                  {contacts.map(c => (
+                    <option key={c._id} value={c._id}>
+                      {c.firstName} {c.lastName} - {c.company} ({c.email || 'No email'})
+                    </option>
+                  ))}
+                </select>
+              )
             )}
           </div>
-        </div>
+
+          {/* Proposal File and Subject */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1">
+                Embedded Proposal Document (Innonsh-Style)
+              </label>
+              <div className="relative flex items-center gap-2">
+                <label className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-350 rounded-lg text-xs font-bold text-slate-705 cursor-pointer transition active:scale-95">
+                  <FileText className="h-4 w-4 text-indigo-500" />
+                  Choose File
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                </label>
+                {proposalFileData ? (
+                  <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-1.5 rounded-lg text-[10px] font-extrabold max-w-[180px] truncate">
+                    <span className="truncate">📎 {proposalFile}</span>
+                    <button
+                      type="button"
+                      onClick={handleRemoveFile}
+                      className="text-rose-500 hover:text-rose-700 font-bold shrink-0 ml-1 cursor-pointer"
+                      title="Remove File"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-[10px] text-slate-400 italic">No real file selected (default tracked PDF will be used)</span>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1">
+                Campaign Subject
+              </label>
+              <input
+                type="text"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                placeholder="Proposal Estimate for {{company}}"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-medium text-slate-700 focus:outline-none focus:border-indigo-500 transition"
+              />
+            </div>
+          </div>
+
+          {/* Email Body & Templates Guide */}
+          <div>
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">
+                Email Body Content
+              </label>
+              <span className="text-[8px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                Use placeholders: {"{{firstName}}"}, {"{{name}}"}, {"{{company}}"}
+              </span>
+            </div>
+            <textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows="9"
+              placeholder={"Hi {{firstName}},\n\nI hope you are doing well!\n\nI have reviewed your requirements from {{company}} and prepared a detailed proposal for our corporate CRM implementation services.\n\nPlease find the attached estimate ({{proposalFile}}) and download it to review the pricing details.\n\nLooking forward to hearing your thoughts!\n\nBest regards,\nSales Team"}
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 text-xs font-medium text-slate-700 font-mono focus:outline-none focus:border-indigo-500 transition leading-relaxed"
+            ></textarea>
+          </div>
+
+          {formSuccess && (
+            <div className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-100 p-3 rounded-lg flex items-start gap-2.5 leading-relaxed">
+              <CheckCircle2 className="h-4.5 w-4.5 text-emerald-500 shrink-0 mt-0.5" />
+              <span>{formSuccess}</span>
+            </div>
+          )}
+
+          {formError && (
+            <div className="text-xs text-rose-600 bg-rose-50 border border-rose-100 p-3 rounded-lg flex items-start gap-2.5 leading-relaxed">
+              <AlertCircle className="h-4.5 w-4.5 text-rose-500 shrink-0 mt-0.5" />
+              <span>{formError}</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            {/* Email Only Button */}
+            <button
+              type="submit"
+              disabled={sending || (activeTab === 'leads' && leads.length === 0) || (activeTab === 'contacts' && contacts.length === 0)}
+              className="flex items-center justify-center gap-1.5 px-3 py-3 bg-gradient-to-r from-slate-700 to-slate-800 hover:from-slate-800 hover:to-slate-900 text-white font-extrabold text-[10px] uppercase tracking-wider rounded-xl shadow-md transition disabled:opacity-50 active:scale-[0.99] cursor-pointer"
+            >
+              <Mail className="h-3.5 w-3.5 shrink-0" />
+              {sending ? 'Sending...' : 'Email Only'}
+            </button>
+
+            {/* WhatsApp Only Button */}
+            <button
+              type="button"
+              onClick={(e) => handleSendWhatsApp(e, 'whatsapp')}
+              disabled={sending || (activeTab === 'leads' && leads.length === 0) || (activeTab === 'contacts' && contacts.length === 0)}
+              className="flex items-center justify-center gap-1.5 px-3 py-3 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-extrabold text-[10px] uppercase tracking-wider rounded-xl shadow-md transition disabled:opacity-50 active:scale-[0.99] cursor-pointer"
+            >
+              <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+              {sending ? 'Generating...' : 'WhatsApp Only'}
+            </button>
+
+            {/* Both Email & WhatsApp Button */}
+            <button
+              type="button"
+              onClick={(e) => handleSendWhatsApp(e, 'both')}
+              disabled={sending || (activeTab === 'leads' && leads.length === 0) || (activeTab === 'contacts' && contacts.length === 0)}
+              className="flex items-center justify-center gap-1.5 px-3 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-extrabold text-[10px] uppercase tracking-wider rounded-xl shadow-md transition disabled:opacity-50 active:scale-[0.99] cursor-pointer"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-yellow-300 animate-pulse shrink-0" />
+              {sending ? 'Both...' : 'Both (Email & WA)'}
+            </button>
+          </div>
+
+          {/* Premium Innonsh-style Active Email & Proposal Tracking Guidelines Card */}
+          <div className="mt-5 p-4 rounded-xl bg-slate-50 border border-slate-200 text-left relative overflow-hidden transition hover:shadow-md duration-200">
+            <div className="absolute top-0 right-0 h-16 w-16 bg-gradient-to-bl from-emerald-500/5 to-transparent pointer-events-none rounded-bl-full"></div>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] font-black uppercase tracking-wider mb-2.5">
+              <Sparkles className="h-2.5 w-2.5 text-emerald-600" /> Active Tracking Engine Guidelines
+            </div>
+            <div className="space-y-3 text-[11px] text-slate-650 leading-relaxed font-medium">
+              <div className="flex items-start gap-2.5">
+                <span className="text-emerald-500 shrink-0 text-xs mt-0.5">👁️</span>
+                <div>
+                  <span className="font-extrabold text-slate-800 block">Invisible Pixel Open Tracking</span>
+                  Dispatched campaign emails automatically inject a 1x1 invisible pixel to log email view count and representative notifications instantly.
+                </div>
+              </div>
+              <div className="flex items-start gap-2.5">
+                <span className="text-sky-500 shrink-0 text-xs mt-0.5">📎</span>
+                <div>
+                  <span className="font-extrabold text-slate-800 block">Tracked PDF Redirection</span>
+                  Proposal attachments are wrapped inside secure URL redirection links. Clicking them increments Lead Score (+20) and triggers download events.
+                </div>
+              </div>
+              <div className="flex items-start gap-2.5">
+                <span className="text-violet-500 shrink-0 text-xs mt-0.5">💬</span>
+                <div>
+                  <span className="font-extrabold text-slate-800 block">On-Demand Gmail IMAP Sync</span>
+                  Click "Sync Replies" anytime to securely download incoming client email replies and display them in clean, modern chat bubble logs.
+                </div>
+              </div>
+            </div>
+          </div>
+        </form>
       </div>
 
       {/* Bottom Section: Sent Campaigns Table & Feed */}
@@ -948,6 +716,36 @@ export default function EmailHubPage() {
             </div>
           </div>
         </div>
+
+        {/* Sync Alert Banner */}
+        {syncAlert && (
+          <div className={`mb-5 p-4 rounded-xl border flex items-start justify-between gap-3 text-xs leading-relaxed transition-all duration-300 ${
+            syncAlert.type === 'success'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : 'bg-rose-50 border-rose-200 text-rose-800'
+          }`}>
+            <div className="flex items-start gap-2.5">
+              {syncAlert.type === 'success' ? (
+                <CheckCircle2 className="h-4.5 w-4.5 text-emerald-500 shrink-0 mt-0.5" />
+              ) : (
+                <AlertCircle className="h-4.5 w-4.5 text-rose-500 shrink-0 mt-0.5" />
+              )}
+              <div>
+                <span className="font-extrabold block">
+                  {syncAlert.type === 'success' ? 'Synchronization Successful' : 'Synchronization Failed'}
+                </span>
+                <span className="font-medium">{syncAlert.message}</span>
+              </div>
+            </div>
+            <button
+              onClick={() => setSyncAlert(null)}
+              className="text-slate-400 hover:text-slate-650 font-bold shrink-0 cursor-pointer text-sm transition"
+              title="Dismiss Alert"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {loading ? (
           <div className="py-12 text-center text-slate-500 italic text-xs flex flex-col items-center gap-2">
@@ -1079,7 +877,7 @@ export default function EmailHubPage() {
         )}
       </div>
 
-      {/* Premium Zoho-style Email Conversation History Modal */}
+      {/* Premium Innonsh-style Email Conversation History Modal */}
       {activeConversationEmail && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-all duration-300 animate-fadeIn">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] animate-scaleUp">
@@ -1087,7 +885,7 @@ export default function EmailHubPage() {
             {/* Modal Header */}
             <div className="bg-gradient-to-r from-slate-900 to-indigo-950 px-6 py-4 text-white flex justify-between items-center shrink-0">
               <div>
-                <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest block font-sans">Zoho-style Email Viewer</span>
+                <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest block font-sans">Innonsh-style Email Viewer</span>
                 <h3 className="text-sm font-extrabold truncate max-w-md" title={activeConversationEmail.subject}>
                   {activeConversationEmail.subject}
                 </h3>
