@@ -15,6 +15,11 @@ if (!cached) {
 
 async function connectToDatabase() {
   if (!MONGODB_URI) {
+    // If Supabase is configured and active, skip throwing an error for missing MONGODB_URI
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      console.warn('⚠️ Warning: MONGODB_URI is not defined, but Supabase is configured. MongoDB fallback connection skipped.');
+      return null;
+    }
     throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
   }
 
