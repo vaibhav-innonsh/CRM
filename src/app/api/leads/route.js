@@ -67,10 +67,27 @@ export async function GET(req) {
       ];
     }
 
+    const sortBy = searchParams.get('sortBy') || 'newest';
+
     // Fetch leads and populate assignee details (name & email)
-    const leads = await Lead.find(query)
-      .populate('assignedTo', 'name email')
-      .sort({ createdAt: -1 });
+    let leads = await Lead.find(query)
+      .populate('assignedTo', 'name email');
+
+    if (sortBy === 'latest_communication') {
+      leads = leads.sort((a, b) => {
+        const aLatest = Math.max(
+          new Date(a.createdAt || 0).getTime() || 0,
+          ...(a.notes || []).map((n) => new Date(n.createdAt || 0).getTime() || 0)
+        );
+        const bLatest = Math.max(
+          new Date(b.createdAt || 0).getTime() || 0,
+          ...(b.notes || []).map((n) => new Date(n.createdAt || 0).getTime() || 0)
+        );
+        return bLatest - aLatest;
+      });
+    } else {
+      leads = leads.sort((a, b) => (new Date(b.createdAt || 0).getTime() || 0) - (new Date(a.createdAt || 0).getTime() || 0));
+    }
 
     return NextResponse.json({
       success: true,

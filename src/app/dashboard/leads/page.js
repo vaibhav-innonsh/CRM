@@ -57,6 +57,7 @@ export default function LeadsPage() {
   const [sourceFilter, setSourceFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [repFilter, setRepFilter] = useState('');
+  const [sortBy, setSortBy] = useState('newest');
 
   // Selected lead for detail slide-over
   const [selectedLead, setSelectedLead] = useState(null);
@@ -184,6 +185,7 @@ export default function LeadsPage() {
       if (sourceFilter) queryParams.append('source', sourceFilter);
       if (priorityFilter) queryParams.append('priority', priorityFilter);
       if (repFilter) queryParams.append('assignedTo', repFilter);
+      if (sortBy) queryParams.append('sortBy', sortBy);
 
       const res = await fetch(`/api/leads?${queryParams.toString()}`);
       if (res.ok) {
@@ -200,7 +202,7 @@ export default function LeadsPage() {
 
   useEffect(() => {
     fetchLeads();
-  }, [search, statusFilter, sourceFilter, priorityFilter, repFilter]);
+  }, [search, statusFilter, sourceFilter, priorityFilter, repFilter, sortBy]);
 
   // Handle lead select and fetch details
   const handleSelectLead = async (leadId) => {
@@ -973,7 +975,7 @@ export default function LeadsPage() {
       </div>
 
       {/* --- FILTER & SEARCH BAR --- */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 p-4 rounded-xl bg-white border border-slate-200 shadow-sm">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 p-4 rounded-xl bg-white border border-slate-200 shadow-sm">
         {/* Search */}
         <div className="relative">
           <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 pointer-events-none">
@@ -1057,6 +1059,18 @@ export default function LeadsPage() {
             Isolated Session
           </div>
         )}
+
+        {/* Sorting Order */}
+        <div>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-650 font-bold transition cursor-pointer"
+          >
+            <option value="newest">🆕 Sort: Newest Created</option>
+            <option value="latest_communication">💬 Sort: Latest Follow-up</option>
+          </select>
+        </div>
       </div>
 
       {/* --- LEADS DATA TABLE --- */}
@@ -1087,7 +1101,7 @@ export default function LeadsPage() {
                   <th className="px-6 py-4">Status</th>
                   <th className="px-6 py-4">WhatsApp Log</th>
                   <th className="px-6 py-4">Assigned To</th>
-                  <th className="px-6 py-4 text-center">History</th>
+                  <th className="px-6 py-4">Latest Communication</th>
                   <th className="px-6 py-4 text-right">Action</th>
                 </tr>
               </thead>
@@ -1095,6 +1109,9 @@ export default function LeadsPage() {
                 {currentLeads.map((lead) => {
                   const followUpAlert = getFollowUpStatus(lead);
                   const isSlipping = isInactiveLead(lead);
+                  const latestNote = lead.notes && lead.notes.length > 0
+                    ? [...lead.notes].sort((a, b) => (new Date(b.createdAt || 0).getTime() || 0) - (new Date(a.createdAt || 0).getTime() || 0))[0]
+                    : null;
 
                   return (
                     <tr 
@@ -1185,14 +1202,26 @@ export default function LeadsPage() {
                           <span className="text-slate-450 italic font-semibold">Unassigned</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-center">
-                        {lead.notes.length > 0 ? (
-                          <span className="inline-flex items-center justify-center h-5 px-1.5 rounded bg-slate-100 border border-slate-200 text-[10px] text-slate-655 font-mono font-extrabold">
-                            {lead.notes.length} logs
-                          </span>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col gap-0.5">
+                          {latestNote ? (
+                            <>
+                              <span className="font-bold text-slate-700 truncate max-w-[180px]" title={latestNote.text}>
+                                {latestNote.text}
+                              </span>
+                              <span className="text-[9px] text-slate-400 font-semibold">
+                                {latestNote.createdAt ? new Date(latestNote.createdAt).toLocaleDateString('en-IN', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                }) : 'No timestamp'}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-slate-400 italic">No communication logged</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-2">
