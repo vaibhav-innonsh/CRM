@@ -35,6 +35,9 @@ export async function GET(req) {
     // 1. Verify that Mailbox credentials are configured in local environment
     const smtpUser = process.env.SMTP_USER;
     const smtpPass = process.env.SMTP_PASS;
+    const imapHost = process.env.IMAP_HOST || 'imap.gmail.com';
+    const imapPort = parseInt(process.env.IMAP_PORT || '993', 10);
+    const imapSecure = process.env.IMAP_SECURE !== 'false';
 
     if (!smtpUser || !smtpPass) {
       return NextResponse.json(
@@ -91,9 +94,9 @@ export async function GET(req) {
 
       // 5. Initialize the modern promise-based ImapFlow client
       const client = new ImapFlow({
-        host: 'imap.gmail.com',
-        port: 993,
-        secure: true,
+        host: imapHost,
+        port: imapPort,
+        secure: imapSecure,
         auth: {
           user: smtpUser,
           pass: smtpPass,
@@ -101,7 +104,7 @@ export async function GET(req) {
         logger: false, // Prevents console log flooding
       });
 
-      // 6. Securely connect to Gmail's IMAP server
+      // 6. Securely connect to the IMAP server
       await client.connect();
 
       let syncedCount = 0;
@@ -146,7 +149,7 @@ export async function GET(req) {
                 .update({
                   replied: true,
                   replied_at: incomingEmailDate.toISOString(),
-                  reply_body: incomingEmailBody || 'Client responded via email. Please check your Gmail Inbox.'
+                  reply_body: incomingEmailBody || 'Client responded via email. Please check your Inbox.'
                 })
                 .eq('id', dbEmail.id);
 
@@ -173,12 +176,12 @@ export async function GET(req) {
                     .eq('id', lead.id);
 
                   // Push activity note on Lead's history timeline
-                  const noteText = `💬 Received Gmail Reply (Subject: "${dbEmail.subject}"): "${incomingEmailBody.slice(0, 150)}${incomingEmailBody.length > 150 ? '...' : ''}"`;
+                  const noteText = `💬 Received Email Reply (Subject: "${dbEmail.subject}"): "${incomingEmailBody.slice(0, 150)}${incomingEmailBody.length > 150 ? '...' : ''}"`;
                   await supabase.from('lead_notes').insert([{
                     lead_id: lead.id,
                     text: noteText,
                     created_by: dbEmail.sent_by,
-                    created_by_name: 'Gmail Reply Sync Engine'
+                    created_by_name: 'Email Reply Sync Engine'
                   }]);
 
                   // Auto-create High-Priority task due in 24 hours
@@ -186,7 +189,7 @@ export async function GET(req) {
                   const assignedRep = lead.assigned_to || dbEmail.sent_by;
 
                   await supabase.from('tasks').insert([{
-                    subject: `Gmail Sync Auto-followup: Response from ${lead.first_name} ${lead.last_name || ''}`,
+                    subject: `Email Sync Auto-followup: Response from ${lead.first_name} ${lead.last_name || ''}`,
                     due_date: taskDueDate.toISOString(),
                     priority: 'High',
                     status: 'Pending',
@@ -200,7 +203,7 @@ export async function GET(req) {
                     assignedRep,
                     'Lead',
                     '💬 Client Replied to Proposal!',
-                    `Lead ${lead.first_name} (${lead.company || ''}) replied via Gmail: "${incomingEmailBody.slice(0, 60)}${incomingEmailBody.length > 60 ? '...' : ''}" - Lead Score boosted by +30 (Score: ${updatedScore})!`,
+                    `Lead ${lead.first_name} (${lead.company || ''}) replied via Email: "${incomingEmailBody.slice(0, 60)}${incomingEmailBody.length > 60 ? '...' : ''}" - Lead Score boosted by +30 (Score: ${updatedScore})!`,
                     '/dashboard/tasks',
                     null
                   );
@@ -218,7 +221,7 @@ export async function GET(req) {
                   const assignedRep = contact.assigned_to || dbEmail.sent_by;
 
                   await supabase.from('tasks').insert([{
-                    subject: `Gmail Sync Auto-followup: Response from Contact ${contact.first_name}`,
+                    subject: `Email Sync Auto-followup: Response from Contact ${contact.first_name}`,
                     due_date: taskDueDate.toISOString(),
                     priority: 'High',
                     status: 'Pending',
@@ -232,7 +235,7 @@ export async function GET(req) {
                     assignedRep,
                     'System',
                     '💬 Contact Replied!',
-                    `Contact ${contact.first_name} (${contact.company || ''}) replied via Gmail: "${incomingEmailBody.slice(0, 60)}${incomingEmailBody.length > 60 ? '...' : ''}" - High-priority follow-up task assigned.`,
+                    `Contact ${contact.first_name} (${contact.company || ''}) replied via Email: "${incomingEmailBody.slice(0, 60)}${incomingEmailBody.length > 60 ? '...' : ''}" - High-priority follow-up task assigned.`,
                     '/dashboard/tasks',
                     null
                   );
@@ -260,8 +263,8 @@ export async function GET(req) {
       return NextResponse.json({
         success: true,
         message: syncedCount > 0 
-          ? `Successfully synchronized ${syncedCount} real email response(s) from your Gmail inbox!` 
-          : 'All CRM emails are up-to-date. No new client responses detected in Gmail inbox.',
+          ? `Successfully synchronized ${syncedCount} real email response(s) from your mail inbox!` 
+          : 'All CRM emails are up-to-date. No new client responses detected in mail inbox.',
         syncedCount,
         syncedDetails
       });
@@ -310,9 +313,9 @@ export async function GET(req) {
 
       // 5. Initialize the modern promise-based ImapFlow client
       const client = new ImapFlow({
-        host: 'imap.gmail.com',
-        port: 993,
-        secure: true,
+        host: imapHost,
+        port: imapPort,
+        secure: imapSecure,
         auth: {
           user: smtpUser,
           pass: smtpPass,
@@ -320,7 +323,7 @@ export async function GET(req) {
         logger: false, // Prevents console log flooding
       });
 
-      // 6. Securely connect to Gmail's IMAP server
+      // 6. Securely connect to the IMAP server
       await client.connect();
 
       let syncedCount = 0;
@@ -331,7 +334,7 @@ export async function GET(req) {
       try {
         // Loop over every unique client sender email address mapped
         for (const [clientEmail, dbEmails] of emailMap.entries()) {
-          // Search for all emails inside Gmail Inbox originating from this client's email address
+          // Search for all emails inside Inbox originating from this client's email address
           const uids = await client.search({ from: clientEmail });
 
           if (!uids || uids.length === 0) {
@@ -362,7 +365,7 @@ export async function GET(req) {
               // Mark the email log as replied in MongoDB
               dbEmail.replied = true;
               dbEmail.repliedAt = incomingEmailDate;
-              dbEmail.replyBody = incomingEmailBody || 'Client responded via email. Please check your Gmail Inbox.';
+              dbEmail.replyBody = incomingEmailBody || 'Client responded via email. Please check your Inbox.';
               await dbEmail.save();
 
               // Trigger standard automated follow-up workflows
@@ -374,9 +377,9 @@ export async function GET(req) {
 
                   // Push activity note on Lead's history timeline
                   lead.notes.push({
-                    text: `💬 Received Gmail Reply (Subject: "${dbEmail.subject}"): "${incomingEmailBody.slice(0, 150)}${incomingEmailBody.length > 150 ? '...' : ''}"`,
+                    text: `💬 Received Email Reply (Subject: "${dbEmail.subject}"): "${incomingEmailBody.slice(0, 150)}${incomingEmailBody.length > 150 ? '...' : ''}"`,
                     createdBy: dbEmail.sentBy,
-                    createdByName: 'Gmail Reply Sync Engine'
+                    createdByName: 'Email Reply Sync Engine'
                   });
 
                   await lead.save();
@@ -386,7 +389,7 @@ export async function GET(req) {
                   const assignedRep = lead.assignedTo || dbEmail.sentBy;
 
                   await Task.create({
-                    subject: `Gmail Sync Auto-followup: Response from ${lead.firstName} ${lead.lastName || ''}`,
+                    subject: `Email Sync Auto-followup: Response from ${lead.firstName} ${lead.lastName || ''}`,
                     dueDate: taskDueDate,
                     priority: 'High',
                     status: 'Pending',
@@ -401,7 +404,7 @@ export async function GET(req) {
                     senderId: null,
                     type: 'Lead',
                     title: '💬 Client Replied to Proposal!',
-                    message: `Lead ${lead.firstName} (${lead.company}) replied via Gmail: "${incomingEmailBody.slice(0, 60)}${incomingEmailBody.length > 60 ? '...' : ''}" - Lead Score boosted by +30 (Score: ${lead.score})!`,
+                    message: `Lead ${lead.firstName} (${lead.company}) replied via Email: "${incomingEmailBody.slice(0, 60)}${incomingEmailBody.length > 60 ? '...' : ''}" - Lead Score boosted by +30 (Score: ${lead.score})!`,
                     link: '/dashboard/tasks'
                   });
                 }
@@ -410,9 +413,9 @@ export async function GET(req) {
                 if (contact) {
                   // Push activity note on Contact's timeline
                   contact.notes.push({
-                    text: `💬 Received Gmail Reply (Subject: "${dbEmail.subject}"): "${incomingEmailBody.slice(0, 150)}${incomingEmailBody.length > 150 ? '...' : ''}"`,
+                    text: `💬 Received Email Reply (Subject: "${dbEmail.subject}"): "${incomingEmailBody.slice(0, 150)}${incomingEmailBody.length > 150 ? '...' : ''}"`,
                     createdBy: dbEmail.sentBy,
-                    createdByName: 'Gmail Reply Sync Engine'
+                    createdByName: 'Email Reply Sync Engine'
                   });
                   await contact.save();
 
@@ -421,7 +424,7 @@ export async function GET(req) {
                   const assignedRep = contact.assignedTo || dbEmail.sentBy;
 
                   await Task.create({
-                    subject: `Gmail Sync Auto-followup: Response from Contact ${contact.firstName}`,
+                    subject: `Email Sync Auto-followup: Response from Contact ${contact.firstName}`,
                     dueDate: taskDueDate,
                     priority: 'High',
                     status: 'Pending',
@@ -436,7 +439,7 @@ export async function GET(req) {
                     senderId: null,
                     type: 'System',
                     title: '💬 Contact Replied!',
-                    message: `Contact ${contact.firstName} (${contact.company}) replied via Gmail: "${incomingEmailBody.slice(0, 60)}${incomingEmailBody.length > 60 ? '...' : ''}" - High-priority follow-up task assigned.`,
+                    message: `Contact ${contact.firstName} (${contact.company}) replied via Email: "${incomingEmailBody.slice(0, 60)}${incomingEmailBody.length > 60 ? '...' : ''}" - High-priority follow-up task assigned.`,
                     link: '/dashboard/tasks'
                   });
                 }
@@ -463,8 +466,8 @@ export async function GET(req) {
       return NextResponse.json({
         success: true,
         message: syncedCount > 0 
-          ? `Successfully synchronized ${syncedCount} real email response(s) from your Gmail inbox!` 
-          : 'All CRM emails are up-to-date. No new client responses detected in Gmail inbox.',
+          ? `Successfully synchronized ${syncedCount} real email response(s) from your mail inbox!` 
+          : 'All CRM emails are up-to-date. No new client responses detected in mail inbox.',
         syncedCount,
         syncedDetails
       });
@@ -473,7 +476,7 @@ export async function GET(req) {
     console.error('IMAP mail synchronization error:', error);
     return NextResponse.json(
       { 
-        error: 'Failed to synchronize emails via Gmail IMAP.', 
+        error: 'Failed to synchronize emails via IMAP.', 
         details: error.message || 'Verification of network ports or App Password failed.' 
       },
       { status: 500 }

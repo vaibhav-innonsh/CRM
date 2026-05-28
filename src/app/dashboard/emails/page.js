@@ -304,7 +304,7 @@ export default function EmailHubPage() {
       if (res.ok) {
         setSyncAlert({
           type: 'success',
-          message: data.message || 'Gmail synchronization completed!'
+          message: data.message || 'Mailbox synchronization completed!'
         });
         // Reload all metrics and tables
         await fetchData();
@@ -681,7 +681,7 @@ export default function EmailHubPage() {
               <div className="flex items-start gap-2.5">
                 <span className="text-violet-500 shrink-0 text-xs mt-0.5">💬</span>
                 <div>
-                  <span className="font-extrabold text-slate-800 block">On-Demand Gmail IMAP Sync</span>
+                  <span className="font-extrabold text-slate-800 block">On-Demand Mailbox Sync</span>
                   Click "Sync Replies" anytime to securely download incoming client email replies and display them in clean, modern chat bubble logs.
                 </div>
               </div>
@@ -708,7 +708,7 @@ export default function EmailHubPage() {
               onClick={handleSyncEmails}
               disabled={syncing}
               className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-extrabold text-[10px] uppercase tracking-wider rounded-lg shadow-sm border border-emerald-500/20 transition disabled:opacity-50 active:scale-[0.98] cursor-pointer"
-              title="Connect securely to Gmail via IMAP and synchronize real-world client replies in real-time."
+              title="Connect securely to your mail server via IMAP and synchronize real-world client replies in real-time."
             >
               <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
               {syncing ? 'Syncing...' : 'Sync Replies 🔄'}
