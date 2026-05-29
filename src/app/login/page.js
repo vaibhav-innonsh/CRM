@@ -150,7 +150,11 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (res.ok) {
-        router.push('/dashboard');
+        if (data.user && data.user.isSuperAdmin) {
+          router.push('/super-admin');
+        } else {
+          router.push('/dashboard');
+        }
       } else {
         setError(data.error || 'Invalid email or password. Please try again.');
       }
