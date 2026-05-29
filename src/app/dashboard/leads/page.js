@@ -47,6 +47,13 @@ const safeNewDate = (dateVal) => {
   return new Date(dateStr);
 };
 
+// Helper to convert local datetime-local value (YYYY-MM-DDTHH:MM) to UTC ISO string before saving to database
+const localToUTCISO = (localTimeStr) => {
+  if (!localTimeStr) return null;
+  const date = new Date(localTimeStr);
+  return isNaN(date.getTime()) ? null : date.toISOString();
+};
+
 export default function LeadsPage() {
   // Page core states
   const [leads, setLeads] = useState([]);
@@ -273,7 +280,7 @@ export default function LeadsPage() {
       requirements: requirements.trim(),
       interestedProduct,
       followUpType,
-      nextFollowUpDate: nextFollowUpDate || null,
+      nextFollowUpDate: localToUTCISO(nextFollowUpDate),
       customFields,
       autoAssign,
     };
@@ -514,7 +521,7 @@ export default function LeadsPage() {
       requirements: editLeadRequirements.trim(),
       interestedProduct: editLeadInterestedProduct,
       followUpType: editLeadFollowUpType,
-      nextFollowUpDate: editLeadNextFollowUpDate || null,
+      nextFollowUpDate: localToUTCISO(editLeadNextFollowUpDate),
       customFields: editLeadCustomFields,
     };
 
