@@ -25,11 +25,11 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   
   // Register Form States
+  const [companyName, setCompanyName] = useState('');
   const [name, setName] = useState('');
   const [registerEmail, setRegisterEmail] = useState('');
   const [registerPassword, setRegisterPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [registerRole, setRegisterRole] = useState('sales_rep');
   
   // Forgot Password States
   const [forgotStep, setForgotStep] = useState(1); // 1 = enter email, 2 = enter otp and new password
@@ -50,6 +50,11 @@ export default function LoginPage() {
     setError('');
     setSuccess('');
     setRegisteredSuccess(false);
+    setCompanyName('');
+    setName('');
+    setRegisterEmail('');
+    setRegisterPassword('');
+    setConfirmPassword('');
     setForgotStep(1);
     setForgotEmail('');
     setForgotOtp('');
@@ -150,7 +155,11 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (res.ok) {
-        router.push('/dashboard');
+        if (data.user && data.user.isSuperAdmin) {
+          router.push('/super-admin');
+        } else {
+          router.push('/dashboard');
+        }
       } else {
         setError(data.error || 'Invalid email or password. Please try again.');
       }
@@ -167,6 +176,14 @@ export default function LoginPage() {
     setError('');
     setSuccess('');
 
+    if (!companyName.trim()) {
+      return setError('Company Name is required.');
+    }
+
+    if (!name.trim()) {
+      return setError('Full Name is required.');
+    }
+
     if (registerPassword !== confirmPassword) {
       return setError('Passwords do not match. Please verify.');
     }
@@ -180,7 +197,12 @@ export default function LoginPage() {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email: registerEmail, password: registerPassword, role: registerRole }),
+        body: JSON.stringify({ 
+          companyName: companyName.trim(), 
+          name: name.trim(), 
+          email: registerEmail, 
+          password: registerPassword 
+        }),
       });
 
       const data = await res.json();
@@ -188,6 +210,7 @@ export default function LoginPage() {
       if (res.ok) {
         setRegisteredSuccess(true);
         // Clear fields
+        setCompanyName('');
         setName('');
         setRegisterEmail('');
         setRegisterPassword('');
@@ -272,7 +295,7 @@ export default function LoginPage() {
               }`}
             >
               <UserPlus className={`h-3.5 w-3.5 ${activeTab === 'register' ? 'text-indigo-500' : 'text-slate-400'}`} />
-              Request Access
+              Register
             </button>
           </div>
 
@@ -485,23 +508,18 @@ export default function LoginPage() {
 
           ) : registeredSuccess ? (
 
-            
             // --- TAB 2 SUCCESS: ACCESS SUBMITTED PANELS ---
             <div className="space-y-5 text-center py-2 animate-in zoom-in-95 duration-200">
               <div className="mx-auto h-11 w-11 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 shadow-sm">
                 <CheckCircle2 className="h-5.5 w-5.5 animate-bounce" />
               </div>
               <div className="space-y-2">
-                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Access Request Registered!</h3>
+                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Company Registered!</h3>
                 <p className="text-[11px] text-slate-500 leading-relaxed font-semibold">
-                  Your {registerRole === 'sales_admin' ? 'Sales Manager' : 'Sales Representative'} account request has been registered and is currently **pending activation**.
+                  Your organization registration request is currently **pending approval**.
                 </p>
                 <div className="text-[9px] text-amber-700 font-bold bg-amber-50 border border-amber-100 p-2.5 rounded leading-relaxed font-mono">
-                  {registerRole === 'sales_admin' ? (
-                    <span>🔒 Note: You will be able to log in once the CRM Owner approves your credentials.</span>
-                  ) : (
-                    <span>🔒 Note: You will be able to log in once the Sales Manager approves your credentials.</span>
-                  )}
+                  <span>🔒 Note: You will be able to log in once the Super Admin approves your company registration.</span>
                 </div>
               </div>
               <button
@@ -518,7 +536,24 @@ export default function LoginPage() {
             // --- TAB 2: REQUEST ACCESS FORM VIEW ---
             <form onSubmit={handleRegisterSubmit} className="space-y-4 animate-in fade-in duration-200">
               <div className="space-y-1">
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest font-mono">Full Name</label>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest font-mono">Company / Organization Name</label>
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400 pointer-events-none">
+                    <User className="h-4 w-4 text-indigo-500 animate-pulse" />
+                  </span>
+                  <input
+                    type="text"
+                    required
+                    placeholder="E.g. Tata Motors"
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-slate-50/50 border border-slate-200 hover:border-slate-350 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-none transition text-xs text-slate-850 placeholder-slate-400 font-semibold"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest font-mono">Owner / Administrator Name</label>
                 <div className="relative">
                   <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400 pointer-events-none">
                     <User className="h-4 w-4" />
@@ -526,7 +561,7 @@ export default function LoginPage() {
                   <input
                     type="text"
                     required
-                    placeholder="E.g. Vikram Sen"
+                    placeholder="E.g. Rajesh Kumar"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-slate-50/50 border border-slate-200 hover:border-slate-350 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-none transition text-xs text-slate-850 placeholder-slate-400 font-semibold"
@@ -535,7 +570,7 @@ export default function LoginPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest font-mono">Email Address</label>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest font-mono">Owner Email Address</label>
                 <div className="relative">
                   <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400 pointer-events-none">
                     <Mail className="h-4 w-4" />
@@ -543,24 +578,12 @@ export default function LoginPage() {
                   <input
                     type="email"
                     required
-                    placeholder="vikram@company.com"
+                    placeholder="rajesh@tata.com"
                     value={registerEmail}
                     onChange={(e) => setRegisterEmail(e.target.value)}
                     className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-slate-50/50 border border-slate-200 hover:border-slate-350 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-none transition text-xs text-slate-850 placeholder-slate-400 font-semibold"
                   />
                 </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest font-mono">Applying For Role</label>
-                <select
-                  value={registerRole}
-                  onChange={(e) => setRegisterRole(e.target.value)}
-                  className="w-full px-3 py-2 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:ring-1 focus:ring-emerald-500 transition cursor-pointer text-slate-800"
-                >
-                  <option value="sales_rep">Sales Representative (Executive)</option>
-                  <option value="sales_admin">Sales Manager</option>
-                </select>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -597,7 +620,7 @@ export default function LoginPage() {
                 {loading ? (
                   <Loader2 className="h-4 w-4 animate-spin text-white" />
                 ) : (
-                  'Request Executive Access'
+                  'Register Company'
                 )}
               </button>
             </form>

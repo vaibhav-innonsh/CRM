@@ -2,6 +2,7 @@ import connectToDatabase from '@/lib/db';
 import Lead from '@/lib/models/Lead';
 import Deal from '@/lib/models/Deal';
 import Contact from '@/lib/models/Contact';
+import Task from '@/lib/models/Task';
 import { supabase } from '@/lib/supabaseClient';
 import { mapDealToFrontend, mapContactToFrontend } from '@/lib/dbMapper';
 import { getUserFromRequest } from '@/lib/auth';
@@ -74,6 +75,8 @@ export async function POST(req, { params }) {
             company: lead.company,
             contact_email: lead.email || '',
             contact_phone: lead.phone || '',
+            custom_data: lead.custom_data || {},
+            org_id: lead.org_id
           }
         ])
         .select('*')
@@ -101,7 +104,9 @@ export async function POST(req, { params }) {
             country: lead.country || 'India',
             assigned_to: targetAssignedTo,
             lead_id: lead.id,
-            status: 'Active'
+            status: 'Active',
+            custom_data: lead.custom_data || {},
+            org_id: lead.org_id
           }
         ])
         .select('*')
@@ -124,6 +129,20 @@ export async function POST(req, { params }) {
             created_by_name: decodedUser.name,
           }
         ]);
+
+      // 3.5. Update pending tasks linked to this Lead to now link to the new Contact and set correct assignee
+      try {
+        await supabase
+          .from('tasks')
+          .update({ 
+            contact_id: newContact.id,
+            assigned_to: targetAssignedTo
+          })
+          .eq('lead_id', lead.id)
+          .eq('status', 'Pending');
+      } catch (err) {
+        console.error('Failed to link tasks to converted contact:', err);
+      }
 
       // 4. Update Lead Status to "Qualified"
       await supabase
@@ -175,6 +194,7 @@ export async function POST(req, { params }) {
         company: lead.company,
         contactEmail: lead.email,
         contactPhone: lead.phone,
+        orgId: lead.orgId
       });
 
       // 3. Auto Create a Permanent Customer Contact Record
@@ -191,7 +211,8 @@ export async function POST(req, { params }) {
         country: lead.country || 'India',
         assignedTo: targetAssignedTo,
         leadId: lead._id,
-        status: 'Active'
+        status: 'Active',
+        orgId: lead.orgId
       });
 
       // 4. Log conversion note inside lead's timeline
@@ -200,6 +221,16 @@ export async function POST(req, { params }) {
         createdBy: decodedUser.id,
         createdByName: decodedUser.name,
       });
+
+      // 4.5. Update pending tasks linked to this Lead to now link to the new Contact and set correct assignee
+      try {
+        await Task.updateMany(
+          { leadId: lead._id, status: 'Pending' },
+          { contactId: newContact._id, assignedTo: targetAssignedTo }
+        );
+      } catch (err) {
+        console.error('Failed to link tasks to converted contact:', err);
+      }
 
       await lead.save();
 

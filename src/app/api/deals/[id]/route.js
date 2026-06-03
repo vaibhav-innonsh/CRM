@@ -40,7 +40,7 @@ export async function PUT(req, { params }) {
       }
 
       const body = await req.json();
-      const { title, value, stage, closingDate, assignedTo } = body;
+      const { title, value, stage, closingDate, assignedTo, customData } = body;
 
       // Build updates list
       const updates = {};
@@ -54,6 +54,7 @@ export async function PUT(req, { params }) {
         updates.stage = stage;
       }
       if (closingDate !== undefined) updates.closing_date = new Date(closingDate).toISOString();
+      if (customData !== undefined) updates.custom_data = customData;
 
       // Only Owner and Sales Managers can change deal ownership
       if (assignedTo !== undefined) {

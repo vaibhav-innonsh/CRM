@@ -18,11 +18,11 @@ export async function PUT(req, { params }) {
     // 1. DYNAMIC DATABASE DETECTOR
     if (supabase) {
       // Query Supabase
-      const { data: contact, error: fetchError } = await supabase
-        .from('contacts')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
+      let query = supabase.from('contacts').select('*').eq('id', id);
+      if (decodedUser.orgId) {
+        query = query.eq('org_id', decodedUser.orgId);
+      }
+      const { data: contact, error: fetchError } = await query.maybeSingle();
 
       if (fetchError) {
         console.error('Supabase fetch contact details error:', fetchError);
@@ -57,7 +57,8 @@ export async function PUT(req, { params }) {
         state,
         country,
         assignedTo,
-        status
+        status,
+        customData
       } = body;
 
       // Validate firstName
@@ -68,12 +69,11 @@ export async function PUT(req, { params }) {
       // Strict Email Collision check during update
       if (email !== undefined && email.trim() !== '') {
         const cleanEmail = email.toLowerCase().trim();
-        const { data: existingEmail } = await supabase
-          .from('contacts')
-          .select('id')
-          .eq('email', cleanEmail)
-          .neq('id', id)
-          .maybeSingle();
+        let emailQuery = supabase.from('contacts').select('id').eq('email', cleanEmail).neq('id', id);
+        if (decodedUser.orgId) {
+          emailQuery = emailQuery.eq('org_id', decodedUser.orgId);
+        }
+        const { data: existingEmail } = await emailQuery.maybeSingle();
 
         if (existingEmail) {
           return NextResponse.json(
@@ -86,12 +86,11 @@ export async function PUT(req, { params }) {
       // Strict Phone Collision check during update
       if (phone !== undefined && phone.trim() !== '') {
         const cleanPhone = phone.trim();
-        const { data: existingPhone } = await supabase
-          .from('contacts')
-          .select('id')
-          .eq('phone', cleanPhone)
-          .neq('id', id)
-          .maybeSingle();
+        let phoneQuery = supabase.from('contacts').select('id').eq('phone', cleanPhone).neq('id', id);
+        if (decodedUser.orgId) {
+          phoneQuery = phoneQuery.eq('org_id', decodedUser.orgId);
+        }
+        const { data: existingPhone } = await phoneQuery.maybeSingle();
 
         if (existingPhone) {
           return NextResponse.json(
@@ -113,16 +112,18 @@ export async function PUT(req, { params }) {
       if (state !== undefined) updates.state = state.trim();
       if (country !== undefined) updates.country = country.trim();
       if (status !== undefined) updates.status = status;
+      if (customData !== undefined) updates.custom_data = customData;
 
       // Allow Admin/Manager to change assignee
       if (decodedUser.role !== 'sales_rep' && assignedTo !== undefined) {
         updates.assigned_to = assignedTo || null;
       }
 
-      const { data: updatedContact, error: updateError } = await supabase
-        .from('contacts')
-        .update(updates)
-        .eq('id', id)
+      let updateQuery = supabase.from('contacts').update(updates).eq('id', id);
+      if (decodedUser.orgId) {
+        updateQuery = updateQuery.eq('org_id', decodedUser.orgId);
+      }
+      const { data: updatedContact, error: updateError } = await updateQuery
         .select('*, users(id, name, email, role)')
         .single();
 
@@ -261,11 +262,11 @@ export async function DELETE(req, { params }) {
     }
 
     if (supabase) {
-      const { data: contact, error: fetchError } = await supabase
-        .from('contacts')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
+      let query = supabase.from('contacts').select('*').eq('id', id);
+      if (decodedUser.orgId) {
+        query = query.eq('org_id', decodedUser.orgId);
+      }
+      const { data: contact, error: fetchError } = await query.maybeSingle();
 
       if (fetchError) {
         console.error('Supabase delete fetch error:', fetchError);
@@ -276,10 +277,11 @@ export async function DELETE(req, { params }) {
         return NextResponse.json({ error: 'Customer contact profile not found.' }, { status: 404 });
       }
 
-      const { error: deleteError } = await supabase
-        .from('contacts')
-        .delete()
-        .eq('id', id);
+      let deleteQuery = supabase.from('contacts').delete().eq('id', id);
+      if (decodedUser.orgId) {
+        deleteQuery = deleteQuery.eq('org_id', decodedUser.orgId);
+      }
+      const { error: deleteError } = await deleteQuery;
 
       if (deleteError) {
         console.error('Supabase delete contact error:', deleteError);

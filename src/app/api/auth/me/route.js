@@ -25,6 +25,11 @@ export async function GET(req) {
     let userEmail = null;
     let userRole = null;
     let userIsActive = true;
+    let userIsSuperAdmin = false;
+    let userCompanyName = '';
+    let userOrgId = null;
+    let userGstin = '';
+    let userEnabledModules = ['leads', 'deals', 'contacts', 'tasks', 'emails', 'calls', 'meetings', 'products', 'quotations', 'invoices', 'reports', 'analytics', 'users', 'roles', 'teams', 'real-estate'];
 
     // 2. FRESH FETCH FROM DB
     if (supabase) {
@@ -43,6 +48,24 @@ export async function GET(req) {
         userEmail = data.email;
         userRole = data.role;
         userIsActive = data.is_active;
+        userIsSuperAdmin = data.is_super_admin || data.role === 'superadmin';
+        userOrgId = data.org_id;
+
+        // Fetch organization name
+        if (data.org_id && !data.is_super_admin) {
+          const { data: orgData, error: orgError } = await supabase
+            .from('organizations')
+            .select('name, enabled_modules, gstin')
+            .eq('id', data.org_id)
+            .maybeSingle();
+          if (orgError) {
+            console.error('Supabase organization fetch error:', orgError);
+          } else if (orgData) {
+            userCompanyName = orgData.name;
+            userEnabledModules = orgData.enabled_modules || [];
+            userGstin = orgData.gstin || '';
+          }
+        }
       }
     } else {
       await connectToDatabase();
@@ -54,6 +77,8 @@ export async function GET(req) {
         userEmail = mongoUser.email;
         userRole = mongoUser.role;
         userIsActive = mongoUser.isActive;
+        userIsSuperAdmin = mongoUser.isSuperAdmin || mongoUser.role === 'superadmin';
+        userOrgId = mongoUser.orgId || mongoUser.org_id || null;
       }
     }
 
@@ -64,6 +89,9 @@ export async function GET(req) {
       );
     }
 
+    if (userIsSuperAdmin && !userEnabledModules.includes('real-estate')) {
+      userEnabledModules.push('real-estate');
+    }
     return NextResponse.json({
       authenticated: true,
       user: {
@@ -71,6 +99,11 @@ export async function GET(req) {
         name: userName,
         email: userEmail,
         role: userRole,
+        companyName: userCompanyName,
+        isSuperAdmin: userIsSuperAdmin,
+        orgId: userOrgId,
+        enabledModules: userEnabledModules,
+        gstin: userGstin,
       },
     });
   } catch (error) {
@@ -135,7 +168,7 @@ export async function PUT(req) {
       return NextResponse.json({ error: 'User session not found or deactivated.' }, { status: 403 });
     }
 
-    const { name, currentPassword, newPassword } = await req.json();
+    const { name, currentPassword, newPassword, gstin } = await req.json();
 
     let updatedName = userName;
     let updatedPassword = userHashedPassword;
@@ -162,6 +195,23 @@ export async function PUT(req) {
       updatedPassword = await hashPassword(newPassword);
     }
 
+    let updatedGstin = '';
+
+    // 3. Update GSTIN (Only Organization Owners / Managers)
+    if (gstin !== undefined && (userRole === 'owner' || userRole === 'sales_admin')) {
+      if (supabase && decodedUser.orgId) {
+        const { error: orgErr } = await supabase
+          .from('organizations')
+          .update({ gstin: gstin.trim() })
+          .eq('id', decodedUser.orgId);
+        if (orgErr) {
+          console.error('Supabase organization gstin update error:', orgErr);
+          throw orgErr;
+        }
+        updatedGstin = gstin.trim();
+      }
+    }
+
     // Save Updates
     if (supabase) {
       const { data, error } = await supabase
@@ -181,6 +231,18 @@ export async function PUT(req) {
       }
 
       userName = data.name;
+
+      // If GSTIN wasn't updated in this request, fetch current one to return
+      if (gstin === undefined && data.org_id) {
+        const { data: orgData } = await supabase
+          .from('organizations')
+          .select('gstin')
+          .eq('id', data.org_id)
+          .maybeSingle();
+        if (orgData) {
+          updatedGstin = orgData.gstin || '';
+        }
+      }
     } else {
       user.name = updatedName;
       user.password = updatedPassword;
@@ -195,7 +257,9 @@ export async function PUT(req) {
         id: userId,
         name: userName,
         email: userEmail,
-        role: userRole
+        role: userRole,
+        orgId: decodedUser.orgId,
+        gstin: updatedGstin
       }
     });
   } catch (error) {

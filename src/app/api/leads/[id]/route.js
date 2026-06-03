@@ -279,6 +279,7 @@ export async function PUT(req, { params }) {
       if (interestedProduct !== undefined) updates.interested_product = interestedProduct;
       if (followUpType !== undefined) updates.follow_up_type = followUpType;
       if (customFields !== undefined) updates.custom_fields = customFields;
+      if (body.custom_data !== undefined) updates.custom_data = body.custom_data;
       if (nextFollowUpDate !== undefined) {
         updates.next_follow_up_date = nextFollowUpDate ? new Date(nextFollowUpDate).toISOString() : null;
       }
@@ -315,6 +316,7 @@ export async function PUT(req, { params }) {
                 due_date: new Date(nextFollowUpDate).toISOString(),
                 subject: `Follow-up Call: ${firstName || existingLead.first_name} (${company || existingLead.company})`,
                 priority: (priority || existingLead.priority) === 'Hot' ? 'High' : ((priority || existingLead.priority) === 'Cold' ? 'Low' : 'Medium'),
+                assigned_to: finalAssignee || decodedUser.id
               })
               .eq('id', existingTask.id);
           } else {
@@ -327,12 +329,26 @@ export async function PUT(req, { params }) {
                   priority: (priority || existingLead.priority) === 'Hot' ? 'High' : ((priority || existingLead.priority) === 'Cold' ? 'Low' : 'Medium'),
                   status: 'Pending',
                   assigned_to: finalAssignee || decodedUser.id,
-                  lead_id: id
+                  lead_id: id,
+                  org_id: decodedUser.orgId
                 }
               ]);
           }
         } catch (err) {
           console.error('Failed to sync follow-up task on lead edit:', err);
+        }
+      }
+
+      // Also sync assignee for all other pending tasks if the lead's assignee changed
+      if (assignedTo !== undefined) {
+        try {
+          await supabase
+            .from('tasks')
+            .update({ assigned_to: finalAssignee || decodedUser.id })
+            .eq('lead_id', id)
+            .eq('status', 'Pending');
+        } catch (err) {
+          console.error('Failed to sync tasks assignee on lead edit:', err);
         }
       }
 
@@ -537,6 +553,7 @@ export async function PUT(req, { params }) {
             existingTask.dueDate = new Date(nextFollowUpDate);
             existingTask.subject = `Follow-up Call: ${lead.firstName} (${lead.company})`;
             existingTask.priority = lead.priority === 'Hot' ? 'High' : (lead.priority === 'Cold' ? 'Low' : 'Medium');
+            existingTask.assignedTo = lead.assignedTo || decodedUser.id;
             await existingTask.save();
           } else {
             await Task.create({
@@ -550,6 +567,18 @@ export async function PUT(req, { params }) {
           }
         } catch (err) {
           console.error('Failed to sync follow-up task on lead edit:', err);
+        }
+      }
+
+      // Also sync assignee for all other pending tasks if the lead's assignee changed
+      if (assignedTo !== undefined) {
+        try {
+          await Task.updateMany(
+            { leadId: lead._id, status: 'Pending' },
+            { assignedTo: lead.assignedTo || decodedUser.id }
+          );
+        } catch (err) {
+          console.error('Failed to sync tasks assignee on lead edit:', err);
         }
       }
       

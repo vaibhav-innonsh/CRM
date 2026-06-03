@@ -5,7 +5,7 @@ import Contact from '@/lib/models/Contact';
 import User from '@/lib/models/User';
 import { supabase } from '@/lib/supabaseClient';
 import { mapTaskToFrontend } from '@/lib/dbMapper';
-import { getUserFromRequest } from '@/lib/auth';
+import { getUserFromRequest, checkModuleAccess } from '@/lib/auth';
 import { NextResponse } from 'next/server';
 
 // GET /api/tasks - Retrieve active CRM tasks lists based on role bounds
@@ -15,6 +15,13 @@ export async function GET(req) {
 
     if (!decodedUser) {
       return NextResponse.json({ error: 'Unauthorized. Please login.' }, { status: 401 });
+    }
+
+    if (!checkModuleAccess(decodedUser, 'tasks')) {
+      return NextResponse.json(
+        { error: '🔒 This module is not enabled for your organization. Please upgrade your subscription.' },
+        { status: 403 }
+      );
     }
 
     const { searchParams } = new URL(req.url);
@@ -27,6 +34,11 @@ export async function GET(req) {
       let queryBuilder = supabase
         .from('tasks')
         .select('*, users(id, name, email, role), leads(id, first_name, last_name, company, status), contacts(id, first_name, last_name, company, status)');
+
+      // STRICT MULTI-TENANT ISOLATION
+      if (decodedUser.orgId) {
+        queryBuilder = queryBuilder.eq('org_id', decodedUser.orgId);
+      }
 
       // 1. ROLE-BASED ACCESS CONTROL (RBAC) ISOLATION
       if (decodedUser.role === 'sales_rep') {
@@ -126,6 +138,13 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    if (!checkModuleAccess(decodedUser, 'tasks')) {
+      return NextResponse.json(
+        { error: '🔒 This module is not enabled for your organization. Please upgrade your subscription.' },
+        { status: 403 }
+      );
+    }
+
     const body = await req.json();
     const {
       subject,
@@ -165,7 +184,8 @@ export async function POST(req) {
             notes: notes || '',
             assigned_to: targetAssignee,
             lead_id: leadId || null,
-            contact_id: contactId || null
+            contact_id: contactId || null,
+            org_id: decodedUser.orgId
           }
         ])
         .select('*')

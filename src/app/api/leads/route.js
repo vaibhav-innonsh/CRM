@@ -4,7 +4,7 @@ import User from '@/lib/models/User';
 import Task from '@/lib/models/Task';
 import { supabase } from '@/lib/supabaseClient';
 import { mapLeadToFrontend } from '@/lib/dbMapper';
-import { getUserFromRequest } from '@/lib/auth';
+import { getUserFromRequest, checkModuleAccess } from '@/lib/auth';
 import { NextResponse } from 'next/server';
 
 // GET /api/leads - Fetch lead list with strict role-based access control & dynamic filters
@@ -16,6 +16,13 @@ export async function GET(req) {
       return NextResponse.json(
         { error: 'Unauthorized. Please login to access leads.' },
         { status: 401 }
+      );
+    }
+
+    if (!checkModuleAccess(decodedUser, 'leads')) {
+      return NextResponse.json(
+        { error: '🔒 This module is not enabled for your organization. Please upgrade your subscription.' },
+        { status: 403 }
       );
     }
 
@@ -35,6 +42,11 @@ export async function GET(req) {
       let queryBuilder = supabase
         .from('leads')
         .select('*, users(id, name, email), lead_notes(*), lead_attachments(*)');
+
+      // STRICT MULTI-TENANT ISOLATION
+      if (decodedUser.orgId) {
+        queryBuilder = queryBuilder.eq('org_id', decodedUser.orgId);
+      }
 
       // STICT ROLE-BASED ACCESS CONTROL (Leads Isolation)
       if (decodedUser.role === 'sales_rep') {
@@ -175,6 +187,13 @@ export async function POST(req) {
       );
     }
 
+    if (!checkModuleAccess(decodedUser, 'leads')) {
+      return NextResponse.json(
+        { error: '🔒 This module is not enabled for your organization. Please upgrade your subscription.' },
+        { status: 403 }
+      );
+    }
+
     const body = await req.json();
     const {
       firstName,
@@ -203,9 +222,9 @@ export async function POST(req) {
       followUpType,
     } = body;
 
-    if (!firstName || !company) {
+    if (!firstName) {
       return NextResponse.json(
-        { error: 'First name and Company name are required.' },
+        { error: 'First name is required.' },
         { status: 400 }
       );
     }
@@ -322,7 +341,7 @@ export async function POST(req) {
           {
             first_name: firstName,
             last_name: lastName || '',
-            company,
+            company: company || '',
             designation: designation || '',
             email: email || '',
             phone: phone || '',
@@ -343,7 +362,9 @@ export async function POST(req) {
             follow_up_type: followUpType || 'None',
             next_follow_up_date: nextFollowUpDate ? new Date(nextFollowUpDate).toISOString() : null,
             assigned_to: finalAssignee,
-            custom_fields: customFields || []
+            custom_fields: customFields || [],
+            custom_data: body.custom_data || {},
+            org_id: decodedUser.orgId
           }
         ])
         .select('*')
@@ -422,7 +443,7 @@ export async function POST(req) {
       const leadData = {
         firstName,
         lastName: lastName || '',
-        company,
+        company: company || '',
         designation: designation || '',
         email: email || '',
         phone: phone || '',

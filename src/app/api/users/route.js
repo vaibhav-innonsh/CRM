@@ -28,14 +28,21 @@ export async function GET(req) {
     const fetchAll = searchParams.get('all') === 'true';
 
     if (supabase) {
-      let queryBuilder = supabase.from('users');
+      let queryBuilder;
 
       if (fetchAll) {
-        queryBuilder = queryBuilder.select('id, name, email, role, is_active, approval_status, created_at');
+        queryBuilder = supabase
+          .from('users')
+          .select('id, name, email, role, is_active, approval_status, created_at');
 
         // Hierarchical filter: Sales Managers strictly only view and manage Sales Representatives
         if (decodedUser.role === 'sales_admin') {
           queryBuilder = queryBuilder.eq('role', 'sales_rep');
+        }
+
+        // STRICT MULTI-TENANT ISOLATION
+        if (decodedUser.orgId && !decodedUser.isSuperAdmin) {
+          queryBuilder = queryBuilder.eq('org_id', decodedUser.orgId);
         }
 
         const { data, error } = await queryBuilder.order('created_at', { ascending: false });
@@ -54,11 +61,19 @@ export async function GET(req) {
         });
 
       } else {
-        queryBuilder = queryBuilder.select('id, name, email, role').eq('is_active', true);
+        queryBuilder = supabase
+          .from('users')
+          .select('id, name, email, role')
+          .eq('is_active', true);
 
         // Dropdown selection list filters: Sales Managers strictly assign to Sales Reps
         if (decodedUser.role === 'sales_admin') {
           queryBuilder = queryBuilder.eq('role', 'sales_rep');
+        }
+
+        // STRICT MULTI-TENANT ISOLATION
+        if (decodedUser.orgId && !decodedUser.isSuperAdmin) {
+          queryBuilder = queryBuilder.eq('org_id', decodedUser.orgId);
         }
 
         const { data, error } = await queryBuilder.order('name', { ascending: true });
@@ -173,7 +188,8 @@ export async function POST(req) {
         password: hashedPassword,
         role,
         is_active: true,
-        approval_status: 'Approved' // Auto approved on creation by admin
+        approval_status: 'Approved', // Auto approved on creation by admin
+        org_id: decodedUser.orgId
       };
 
       const { data: newUser, error: insertError } = await supabase

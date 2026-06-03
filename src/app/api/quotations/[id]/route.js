@@ -16,7 +16,7 @@ export async function GET(req, { params }) {
     }
 
     if (supabase) {
-      const { data: quotation, error: fetchError } = await supabase
+      let query = supabase
         .from('quotations')
         .select(`
           *,
@@ -25,8 +25,13 @@ export async function GET(req, { params }) {
           contacts!contact_id(*),
           deals!deal_id(id, title, value)
         `)
-        .eq('id', id)
-        .maybeSingle();
+        .eq('id', id);
+
+      if (decodedUser.orgId) {
+        query = query.eq('org_id', decodedUser.orgId);
+      }
+
+      const { data: quotation, error: fetchError } = await query.maybeSingle();
 
       if (fetchError || !quotation) {
         return NextResponse.json({ error: 'Quotation details not found.' }, { status: 404 });
@@ -90,11 +95,11 @@ export async function PUT(req, { params }) {
     } = body;
 
     if (supabase) {
-      const { data: quotation, error: fetchError } = await supabase
-        .from('quotations')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
+      let query = supabase.from('quotations').select('*').eq('id', id);
+      if (decodedUser.orgId) {
+        query = query.eq('org_id', decodedUser.orgId);
+      }
+      const { data: quotation, error: fetchError } = await query.maybeSingle();
 
       if (fetchError || !quotation) {
         return NextResponse.json({ error: 'Quotation not found.' }, { status: 404 });
@@ -160,10 +165,11 @@ export async function PUT(req, { params }) {
       updateData.tax_amount = taxAmount;
       updateData.grand_total = grandTotal;
 
-      const { data: updatedQuotation, error: updateError } = await supabase
-        .from('quotations')
-        .update(updateData)
-        .eq('id', id)
+      let updateQuery = supabase.from('quotations').update(updateData).eq('id', id);
+      if (decodedUser.orgId) {
+        updateQuery = updateQuery.eq('org_id', decodedUser.orgId);
+      }
+      const { data: updatedQuotation, error: updateError } = await updateQuery
         .select(`
           *,
           users!assigned_to(id, name, email),
@@ -270,11 +276,11 @@ export async function DELETE(req, { params }) {
     }
 
     if (supabase) {
-      const { data: quotation, error: fetchError } = await supabase
-        .from('quotations')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
+      let query = supabase.from('quotations').select('*').eq('id', id);
+      if (decodedUser.orgId) {
+        query = query.eq('org_id', decodedUser.orgId);
+      }
+      const { data: quotation, error: fetchError } = await query.maybeSingle();
 
       if (fetchError || !quotation) {
         return NextResponse.json({ error: 'Quotation not found.' }, { status: 404 });
@@ -285,10 +291,11 @@ export async function DELETE(req, { params }) {
         return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
       }
 
-      const { error: deleteError } = await supabase
-        .from('quotations')
-        .delete()
-        .eq('id', id);
+      let deleteQuery = supabase.from('quotations').delete().eq('id', id);
+      if (decodedUser.orgId) {
+        deleteQuery = deleteQuery.eq('org_id', decodedUser.orgId);
+      }
+      const { error: deleteError } = await deleteQuery;
 
       if (deleteError) {
         console.error('Supabase quotation delete error:', deleteError);

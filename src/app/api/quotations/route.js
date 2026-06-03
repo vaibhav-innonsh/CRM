@@ -3,7 +3,7 @@ import Quotation from '@/lib/models/Quotation';
 import Lead from '@/lib/models/Lead';
 import { supabase } from '@/lib/supabaseClient';
 import { mapQuotationToFrontend } from '@/lib/dbMapper';
-import { getUserFromRequest } from '@/lib/auth';
+import { getUserFromRequest, checkModuleAccess } from '@/lib/auth';
 import { NextResponse } from 'next/server';
 
 // GET /api/quotations - Query all sales proposals with dynamic roles isolation
@@ -13,6 +13,13 @@ export async function GET(req) {
 
     if (!decodedUser) {
       return NextResponse.json({ error: 'Unauthorized. Please login.' }, { status: 401 });
+    }
+
+    if (!checkModuleAccess(decodedUser, 'quotations')) {
+      return NextResponse.json(
+        { error: '🔒 This module is not enabled for your organization. Please upgrade your subscription.' },
+        { status: 403 }
+      );
     }
 
     const { searchParams } = new URL(req.url);
@@ -30,6 +37,11 @@ export async function GET(req) {
           contacts!contact_id(id, first_name, last_name, company, email),
           deals!deal_id(id, title, value)
         `);
+
+      // STRICT MULTI-TENANT ISOLATION
+      if (decodedUser.orgId) {
+        queryBuilder = queryBuilder.eq('org_id', decodedUser.orgId);
+      }
 
       // 1. STRICT ROLE-BASED ACCESS CONTROL
       if (decodedUser.role === 'sales_rep') {
@@ -115,6 +127,13 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    if (!checkModuleAccess(decodedUser, 'quotations')) {
+      return NextResponse.json(
+        { error: '🔒 This module is not enabled for your organization. Please upgrade your subscription.' },
+        { status: 403 }
+      );
+    }
+
     const body = await req.json();
     const {
       title,
@@ -171,9 +190,11 @@ export async function POST(req) {
     const computedGrandTotal = Number((computedSubtotal + computedTaxAmount).toFixed(2));
 
     if (supabase) {
-      const { count, error: countError } = await supabase
-        .from('quotations')
-        .select('*', { count: 'exact', head: true });
+      let countQuery = supabase.from('quotations').select('*', { count: 'exact', head: true });
+      if (decodedUser.orgId) {
+        countQuery = countQuery.eq('org_id', decodedUser.orgId);
+      }
+      const { count, error: countError } = await countQuery;
 
       if (countError) {
         console.error('Supabase quotations count error:', countError);
@@ -197,7 +218,8 @@ export async function POST(req) {
         grand_total: computedGrandTotal,
         notes: notes || '',
         status: status || 'Draft',
-        assigned_to: decodedUser.id
+        assigned_to: decodedUser.id,
+        org_id: decodedUser.orgId
       };
 
       const { data: newQuotation, error: insertError } = await supabase

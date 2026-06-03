@@ -19,6 +19,11 @@ export default function DealsPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
 
+  // Org-wide customizations and standard field visibility
+  const [orgCustomFieldDefs, setOrgCustomFieldDefs] = useState([]);
+  const [hiddenStandardFields, setHiddenStandardFields] = useState([]);
+  const [sector, setSector] = useState('');
+
   // Kanban pipeline columns/stages with premium high-contrast colors
   const stages = [
     { key: 'Prospecting', label: 'Prospecting', color: 'border-t-blue-500', text: 'text-blue-600', bg: 'bg-slate-100/50' },
@@ -29,18 +34,37 @@ export default function DealsPage() {
   ];
 
   useEffect(() => {
-    async function fetchUser() {
+    async function initDealsPage() {
       try {
-        const res = await fetch('/api/auth/me');
-        if (res.ok) {
-          const data = await res.json();
+        const userRes = await fetch('/api/auth/me');
+        if (userRes.ok) {
+          const data = await userRes.json();
           setCurrentUser(data.user);
+
+          // Fetch custom fields schema + standard visibility
+          const [cfRes, sfRes, suggRes] = await Promise.all([
+            fetch('/api/tenant/custom-fields?module=deals'),
+            fetch('/api/tenant/standard-fields'),
+            fetch('/api/tenant/sector-suggestions?module=deals')
+          ]);
+          if (cfRes.ok) {
+            const cfData = await cfRes.json();
+            setOrgCustomFieldDefs(cfData.fields || []);
+          }
+          if (sfRes.ok) {
+            const sfData = await sfRes.json();
+            setHiddenStandardFields(sfData.hiddenFields || []);
+          }
+          if (suggRes.ok) {
+            const suggData = await suggRes.json();
+            setSector(suggData.sector || 'General');
+          }
         }
       } catch (err) {
-        console.error('Fetch user failed:', err);
+        console.error('Init deals page failed:', err);
       }
     }
-    fetchUser();
+    initDealsPage();
     fetchDeals();
   }, []);
 
@@ -253,10 +277,28 @@ export default function DealsPage() {
                           </div>
 
                           {/* Company Name */}
-                          <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-2 font-bold">
-                            <Building className="h-3 w-3 text-slate-300 shrink-0" />
-                            <span className="truncate">{deal.company}</span>
-                          </div>
+                          {!hiddenStandardFields.includes('deals:company') && (
+                            <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-2 font-bold">
+                              <Building className="h-3 w-3 text-slate-300 shrink-0" />
+                              <span className="truncate">{deal.company}</span>
+                            </div>
+                          )}
+
+                          {/* Dynamic Org Custom Fields Metadata Tags */}
+                          {orgCustomFieldDefs.length > 0 && (
+                            <div className="mt-2.5 space-y-1 border-t border-slate-100/60 pt-2 flex flex-col">
+                              {orgCustomFieldDefs.map((field) => {
+                                const val = deal.customData?.[field.field_key];
+                                if (val === undefined || val === '') return null;
+                                return (
+                                  <div key={field.id} className="flex justify-between items-center text-[9px] text-slate-500 font-medium gap-2">
+                                    <span className="text-slate-450 font-bold uppercase truncate">{field.field_label}</span>
+                                    <span className="font-extrabold text-slate-700 truncate max-w-[100px]">{val}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
 
                           {/* Valuation Budget */}
                           <div className="text-[12px] font-black text-slate-850 mt-3 flex items-center justify-between border-t border-slate-100 pt-2.5">
@@ -266,10 +308,14 @@ export default function DealsPage() {
 
                           {/* Date and Owner footer */}
                           <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-slate-100 text-[9px] text-slate-450 font-bold">
-                            <div className="flex items-center gap-1 text-slate-450">
-                              <Calendar className="h-3 w-3 text-slate-300 shrink-0" />
-                              <span>{new Date(deal.closingDate).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}</span>
-                            </div>
+                            {!hiddenStandardFields.includes('deals:closingDate') ? (
+                              <div className="flex items-center gap-1 text-slate-450">
+                                <Calendar className="h-3 w-3 text-slate-300 shrink-0" />
+                                <span>{new Date(deal.closingDate).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}</span>
+                              </div>
+                            ) : (
+                              <div className="text-[8px] text-slate-300 italic">Timeline hidden</div>
+                            )}
                             <div className="flex items-center gap-1.5">
                               <div className="h-4.5 w-4.5 rounded-full bg-slate-100 text-[8px] flex items-center justify-center font-extrabold text-emerald-600 border border-slate-200 shadow-sm">
                                 {deal.assignedTo?.name[0] || 'U'}

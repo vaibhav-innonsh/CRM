@@ -27,11 +27,11 @@ export async function PUT(req, { params }) {
     const { name, description, leader, members, region, targetAmount } = await req.json();
 
     if (supabase) {
-      const { data: targetTeam, error: fetchError } = await supabase
-        .from('teams')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
+      let query = supabase.from('teams').select('*').eq('id', id);
+      if (decodedUser.orgId) {
+        query = query.eq('org_id', decodedUser.orgId);
+      }
+      const { data: targetTeam, error: fetchError } = await query.maybeSingle();
 
       if (fetchError || !targetTeam) {
         return NextResponse.json({ error: 'Sales team not found.' }, { status: 404 });
@@ -49,12 +49,11 @@ export async function PUT(req, { params }) {
 
       // Check name uniqueness if team name is changed
       if (name && name.trim() !== targetTeam.name) {
-        const { data: nameConflict } = await supabase
-          .from('teams')
-          .select('id')
-          .eq('name', name.trim())
-          .neq('id', id)
-          .maybeSingle();
+        let uniquenessQuery = supabase.from('teams').select('id').eq('name', name.trim()).neq('id', id);
+        if (decodedUser.orgId) {
+          uniquenessQuery = uniquenessQuery.eq('org_id', decodedUser.orgId);
+        }
+        const { data: nameConflict } = await uniquenessQuery.maybeSingle();
 
         if (nameConflict) {
           return NextResponse.json({ error: `A team named "${name.trim()}" already exists in the system.` }, { status: 400 });
@@ -72,10 +71,11 @@ export async function PUT(req, { params }) {
         updateData.leader = leader;
       }
 
-      const { data: updatedTeam, error: updateError } = await supabase
-        .from('teams')
-        .update(updateData)
-        .eq('id', id)
+      let updateQuery = supabase.from('teams').update(updateData).eq('id', id);
+      if (decodedUser.orgId) {
+        updateQuery = updateQuery.eq('org_id', decodedUser.orgId);
+      }
+      const { data: updatedTeam, error: updateError } = await updateQuery
         .select('*, leader_details:users!leader(id, name, email)')
         .single();
 
@@ -172,11 +172,11 @@ export async function DELETE(req, { params }) {
     }
 
     if (supabase) {
-      const { data: targetTeam, error: fetchError } = await supabase
-        .from('teams')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
+      let query = supabase.from('teams').select('*').eq('id', id);
+      if (decodedUser.orgId) {
+        query = query.eq('org_id', decodedUser.orgId);
+      }
+      const { data: targetTeam, error: fetchError } = await query.maybeSingle();
 
       if (fetchError || !targetTeam) {
         return NextResponse.json({ error: 'Sales team not found.' }, { status: 404 });
@@ -190,10 +190,11 @@ export async function DELETE(req, { params }) {
         );
       }
 
-      const { error: deleteError } = await supabase
-        .from('teams')
-        .delete()
-        .eq('id', id);
+      let deleteQuery = supabase.from('teams').delete().eq('id', id);
+      if (decodedUser.orgId) {
+        deleteQuery = deleteQuery.eq('org_id', decodedUser.orgId);
+      }
+      const { error: deleteError } = await deleteQuery;
 
       if (deleteError) {
         console.error('Supabase team delete error:', deleteError);

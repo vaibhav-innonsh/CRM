@@ -24,6 +24,11 @@ export async function POST(req) {
     let userApprovalStatus = 'Approved';
     let userIsActive = true;
     let userHashedPassword = '';
+    let userIsSuperAdmin = false;
+    let userOrgApprovalStatus = 'Approved';
+    let userCompanyName = '';
+    let userOrgId = null;
+    let userEnabledModules = ['leads', 'deals', 'contacts', 'tasks', 'emails', 'calls', 'meetings', 'products', 'quotations', 'invoices', 'reports', 'analytics', 'users', 'roles', 'teams', 'real-estate'];
 
     // 1. DYNAMIC DATABASE DETECTOR
     if (supabase) {
@@ -45,6 +50,24 @@ export async function POST(req) {
         userApprovalStatus = data.approval_status;
         userIsActive = data.is_active;
         userHashedPassword = data.password;
+        userIsSuperAdmin = data.is_super_admin || data.role === 'superadmin';
+        userOrgId = data.org_id;
+
+        // Check organization approval status if not a super admin
+        if (data.org_id && !data.is_super_admin) {
+          const { data: orgData, error: orgError } = await supabase
+            .from('organizations')
+            .select('name, approval_status, enabled_modules')
+            .eq('id', data.org_id)
+            .maybeSingle();
+          if (orgError) {
+            console.error('Supabase organization fetch error:', orgError);
+          } else if (orgData) {
+            userOrgApprovalStatus = orgData.approval_status;
+            userCompanyName = orgData.name;
+            userEnabledModules = orgData.enabled_modules || [];
+          }
+        }
       }
     } else {
       // Graceful fallback to MongoDB
@@ -59,6 +82,8 @@ export async function POST(req) {
         userApprovalStatus = mongoUser.approvalStatus;
         userIsActive = mongoUser.isActive;
         userHashedPassword = mongoUser.password;
+        userIsSuperAdmin = mongoUser.isSuperAdmin || mongoUser.role === 'superadmin';
+        userOrgId = mongoUser.orgId || mongoUser.org_id || null;
       }
     }
 
@@ -66,6 +91,21 @@ export async function POST(req) {
       return NextResponse.json(
         { error: 'Invalid email or password' },
         { status: 401 }
+      );
+    }
+
+    // Check organization approval status
+    if (userOrgApprovalStatus === 'Pending') {
+      return NextResponse.json(
+        { error: '🔒 Your company registration is currently pending Super Admin approval. Please check back later.' },
+        { status: 403 }
+      );
+    }
+
+    if (userOrgApprovalStatus === 'Suspended') {
+      return NextResponse.json(
+        { error: '❌ Your company access has been suspended. Please contact support.' },
+        { status: 403 }
       );
     }
 
@@ -95,11 +135,17 @@ export async function POST(req) {
     }
 
     // 3. Create session token (JWT)
+    if (userIsSuperAdmin && !userEnabledModules.includes('real-estate')) {
+      userEnabledModules.push('real-estate');
+    }
     const sessionToken = signToken({
       id: userId,
       name: userName,
       email: userEmail,
       role: userRole,
+      isSuperAdmin: userIsSuperAdmin,
+      orgId: userOrgId,
+      enabledModules: userEnabledModules,
     });
 
     // 4. Create response and set cookie
@@ -111,6 +157,10 @@ export async function POST(req) {
         name: userName,
         email: userEmail,
         role: userRole,
+        companyName: userCompanyName,
+        isSuperAdmin: userIsSuperAdmin,
+        orgId: userOrgId,
+        enabledModules: userEnabledModules,
       },
     });
 

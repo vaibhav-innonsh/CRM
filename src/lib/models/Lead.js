@@ -73,8 +73,9 @@ const LeadSchema = new mongoose.Schema(
     },
     company: {
       type: String,
-      required: [true, 'Company name is required'],
+      required: false,
       trim: true,
+      default: '',
     },
     designation: {
       type: String,

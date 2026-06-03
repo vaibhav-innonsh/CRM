@@ -2,7 +2,7 @@ import connectToDatabase from '@/lib/db';
 import Deal from '@/lib/models/Deal';
 import { supabase } from '@/lib/supabaseClient';
 import { mapDealToFrontend } from '@/lib/dbMapper';
-import { getUserFromRequest } from '@/lib/auth';
+import { getUserFromRequest, checkModuleAccess } from '@/lib/auth';
 import { NextResponse } from 'next/server';
 
 // GET /api/deals - Fetch deals list with role-based access control
@@ -17,6 +17,13 @@ export async function GET(req) {
       );
     }
 
+    if (!checkModuleAccess(decodedUser, 'deals')) {
+      return NextResponse.json(
+        { error: '🔒 This module is not enabled for your organization. Please upgrade your subscription.' },
+        { status: 403 }
+      );
+    }
+
     const { searchParams } = new URL(req.url);
     const stage = searchParams.get('stage') || '';
 
@@ -24,6 +31,11 @@ export async function GET(req) {
       let queryBuilder = supabase
         .from('deals')
         .select('*, users(id, name, email)');
+
+      // STRICT MULTI-TENANT ISOLATION
+      if (decodedUser.orgId) {
+        queryBuilder = queryBuilder.eq('org_id', decodedUser.orgId);
+      }
 
       // STRICT ROLE-BASED ACCESS CONTROL (Deals Isolation)
       if (decodedUser.role === 'sales_rep') {

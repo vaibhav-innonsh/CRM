@@ -25,11 +25,11 @@ export async function PUT(req, { params }) {
     const { name, email, role, isActive } = await req.json();
 
     if (supabase) {
-      const { data: targetUser, error: fetchError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
+      let query = supabase.from('users').select('*').eq('id', id);
+      if (decodedUser.orgId && !decodedUser.isSuperAdmin) {
+        query = query.eq('org_id', decodedUser.orgId);
+      }
+      const { data: targetUser, error: fetchError } = await query.maybeSingle();
 
       if (fetchError || !targetUser) {
         return NextResponse.json({ error: 'Employee profile not found.' }, { status: 404 });
@@ -68,12 +68,11 @@ export async function PUT(req, { params }) {
         updateData.is_active = isActive;
       }
 
-      const { data: updatedUser, error: updateError } = await supabase
-        .from('users')
-        .update(updateData)
-        .eq('id', id)
-        .select('*')
-        .single();
+      let updateQuery = supabase.from('users').update(updateData).eq('id', id);
+      if (decodedUser.orgId && !decodedUser.isSuperAdmin) {
+        updateQuery = updateQuery.eq('org_id', decodedUser.orgId);
+      }
+      const { data: updatedUser, error: updateError } = await updateQuery.select('*').single();
 
       if (updateError) {
         console.error('Supabase user update error:', updateError);
@@ -159,11 +158,11 @@ export async function DELETE(req, { params }) {
     }
 
     if (supabase) {
-      const { data: targetUser, error: fetchError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
+      let query = supabase.from('users').select('*').eq('id', id);
+      if (decodedUser.orgId && !decodedUser.isSuperAdmin) {
+        query = query.eq('org_id', decodedUser.orgId);
+      }
+      const { data: targetUser, error: fetchError } = await query.maybeSingle();
 
       if (fetchError || !targetUser) {
         return NextResponse.json({ error: 'Employee profile not found.' }, { status: 404 });
@@ -186,10 +185,11 @@ export async function DELETE(req, { params }) {
         }
       }
 
-      const { error: deleteError } = await supabase
-        .from('users')
-        .delete()
-        .eq('id', id);
+      let deleteQuery = supabase.from('users').delete().eq('id', id);
+      if (decodedUser.orgId && !decodedUser.isSuperAdmin) {
+        deleteQuery = deleteQuery.eq('org_id', decodedUser.orgId);
+      }
+      const { error: deleteError } = await deleteQuery;
 
       if (deleteError) {
         console.error('Supabase user delete error:', deleteError);

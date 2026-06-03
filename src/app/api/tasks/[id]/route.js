@@ -17,11 +17,11 @@ export async function PUT(req, { params }) {
 
     if (supabase) {
       // Fetch task to perform RBAC check
-      const { data: task, error: fetchError } = await supabase
-        .from('tasks')
-        .select('*')
-        .eq('id', id)
-        .single();
+      let query = supabase.from('tasks').select('*').eq('id', id);
+      if (decodedUser.orgId) {
+        query = query.eq('org_id', decodedUser.orgId);
+      }
+      const { data: task, error: fetchError } = await query.single();
 
       if (fetchError || !task) {
         return NextResponse.json({ error: 'Task not found.' }, { status: 404 });
@@ -65,10 +65,11 @@ export async function PUT(req, { params }) {
         updates.assigned_to = assignedTo || decodedUser.id;
       }
 
-      const { data: updatedTask, error: updateError } = await supabase
-        .from('tasks')
-        .update(updates)
-        .eq('id', id)
+      let updateQuery = supabase.from('tasks').update(updates).eq('id', id);
+      if (decodedUser.orgId) {
+        updateQuery = updateQuery.eq('org_id', decodedUser.orgId);
+      }
+      const { data: updatedTask, error: updateError } = await updateQuery
         .select('*, users(id, name, email, role), leads(id, first_name, last_name, company, status), contacts(id, first_name, last_name, company, status)')
         .single();
 
@@ -159,11 +160,11 @@ export async function DELETE(req, { params }) {
 
     if (supabase) {
       // Fetch task to perform RBAC check
-      const { data: task, error: fetchError } = await supabase
-        .from('tasks')
-        .select('*')
-        .eq('id', id)
-        .single();
+      let query = supabase.from('tasks').select('*').eq('id', id);
+      if (decodedUser.orgId) {
+        query = query.eq('org_id', decodedUser.orgId);
+      }
+      const { data: task, error: fetchError } = await query.single();
 
       if (fetchError || !task) {
         return NextResponse.json({ error: 'Task not found.' }, { status: 404 });
@@ -180,10 +181,11 @@ export async function DELETE(req, { params }) {
         );
       }
 
-      const { error: deleteError } = await supabase
-        .from('tasks')
-        .delete()
-        .eq('id', id);
+      let deleteQuery = supabase.from('tasks').delete().eq('id', id);
+      if (decodedUser.orgId) {
+        deleteQuery = deleteQuery.eq('org_id', decodedUser.orgId);
+      }
+      const { error: deleteError } = await deleteQuery;
 
       if (deleteError) {
         console.error('Supabase delete task error:', deleteError);

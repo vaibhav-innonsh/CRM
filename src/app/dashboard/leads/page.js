@@ -100,6 +100,10 @@ export default function LeadsPage() {
   const [customFields, setCustomFields] = useState([]);
   const [newFieldLabel, setNewFieldLabel] = useState('');
   const [newFieldValue, setNewFieldValue] = useState('');
+  // Org-level defined custom field definitions (from Custom Fields Manager)
+  const [orgCustomFieldDefs, setOrgCustomFieldDefs] = useState([]);
+  const [orgCustomFieldValues, setOrgCustomFieldValues] = useState({});
+  const [hiddenStandardFields, setHiddenStandardFields] = useState([]);
 
   // Edit Lead Modal States
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -127,6 +131,7 @@ export default function LeadsPage() {
   const [editLeadNextFollowUpDate, setEditLeadNextFollowUpDate] = useState('');
   const [editLeadAssignedTo, setEditLeadAssignedTo] = useState('');
   const [editLeadCustomFields, setEditLeadCustomFields] = useState([]);
+  const [editLeadCustomData, setEditLeadCustomData] = useState({});
 
   // Convert Deal Form state
   const [dealTitle, setDealTitle] = useState('');
@@ -166,6 +171,24 @@ export default function LeadsPage() {
               const repsData = await repsRes.json();
               setSalesReps(repsData.users || []);
             }
+          }
+
+          // Fetch org-level custom field definitions & standard visibility settings
+          try {
+            const [cfRes, stdRes] = await Promise.all([
+              fetch('/api/tenant/custom-fields?module=leads'),
+              fetch('/api/tenant/standard-fields'),
+            ]);
+            if (cfRes.ok) {
+              const cfData = await cfRes.json();
+              setOrgCustomFieldDefs(cfData.fields || []);
+            }
+            if (stdRes.ok) {
+              const stdData = await stdRes.json();
+              setHiddenStandardFields(stdData.hiddenFields || []);
+            }
+          } catch (cfErr) {
+            console.error('Fetch custom field/standard layout error:', cfErr);
           }
         }
       } catch (err) {
@@ -266,6 +289,7 @@ export default function LeadsPage() {
       nextFollowUpDate: nextFollowUpDate || null,
       customFields,
       autoAssign,
+      custom_data: orgCustomFieldValues,
     };
 
     if (assignedTo) {
@@ -322,6 +346,7 @@ export default function LeadsPage() {
     setInterestedProduct('');
     setFollowUpType('None');
     setCustomFields([]);
+    setOrgCustomFieldValues({});
     setFormError('');
   };
 
@@ -451,6 +476,7 @@ export default function LeadsPage() {
     setEditLeadInterestedProduct(lead.interestedProduct || '');
     setEditLeadFollowUpType(lead.followUpType || 'None');
     setEditLeadCustomFields(lead.customFields || []);
+    setEditLeadCustomData(lead.customData || {});
     setFormError('');
 
     // Format nextFollowUpDate beautifully for datetime-local input YYYY-MM-DDTHH:MM
@@ -506,6 +532,7 @@ export default function LeadsPage() {
       followUpType: editLeadFollowUpType,
       nextFollowUpDate: editLeadNextFollowUpDate || null,
       customFields: editLeadCustomFields,
+      custom_data: editLeadCustomData,
     };
 
     if (editLeadAssignedTo) {
@@ -657,6 +684,8 @@ export default function LeadsPage() {
         return 'bg-violet-50 text-violet-700 border border-violet-100';
       case 'Future':
         return 'bg-indigo-50 text-indigo-700 border border-indigo-100';
+      case 'Converted':
+        return 'bg-teal-50 text-teal-700 border border-teal-100';
       default:
         return 'bg-slate-100 text-slate-700 border border-slate-200';
     }
@@ -1296,7 +1325,7 @@ export default function LeadsPage() {
                     {selectedLead.firstName} {selectedLead.lastName}
                   </h2>
                   <p className="text-xs text-slate-400 mt-0.5 font-bold">
-                    {selectedLead.company} {selectedLead.designation ? `• ${selectedLead.designation}` : ''}
+                    {selectedLead.company} {selectedLead.designation && !hiddenStandardFields.includes('designation') ? `• ${selectedLead.designation}` : ''}
                   </p>
                 </div>
               </div>
@@ -1318,9 +1347,9 @@ export default function LeadsPage() {
                     Convert to Deal
                   </button>
                 ) : (
-                  <span className="flex items-center gap-1 px-2.5 py-1 text-xs font-extrabold rounded-lg bg-emerald-50 border border-emerald-100 text-emerald-600 uppercase">
+                  <span className="flex items-center gap-1 px-2.5 py-1 text-xs font-extrabold rounded-lg bg-teal-50 border border-teal-100 text-teal-600 uppercase">
                     <CheckCircle className="h-3.5 w-3.5" />
-                    Qualified Deal
+                    Converted
                   </span>
                 )}
                 <button
@@ -1405,6 +1434,7 @@ export default function LeadsPage() {
                         <option value="Contacted">Contacted</option>
                         <option value="Attempted">Attempted Contact</option>
                         <option value="Qualified">Qualified</option>
+                        <option value="Converted">Converted (Healthcare Patient)</option>
                         <option value="Lost">Lost</option>
                         <option value="Future">Contact in Future</option>
                       </select>
@@ -1432,7 +1462,7 @@ export default function LeadsPage() {
               </div>
 
               {/* WhatsApp Outreach Bar */}
-              {selectedLead.whatsapp && (
+              {selectedLead.whatsapp && !hiddenStandardFields.includes('whatsapp') && (
                 <div className="p-3.5 rounded-xl bg-emerald-50/50 border border-emerald-100 flex items-center justify-between shadow-sm animate-in fade-in">
                   <div className="flex items-center gap-2.5">
                     <MessageCircle className="h-5 w-5 text-emerald-500" />
@@ -1473,10 +1503,12 @@ export default function LeadsPage() {
                       {selectedLead.priority || 'Warm'}
                     </span>
                   </div>
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Lead Source</span>
-                    <span className="text-xs text-slate-700 font-semibold block mt-1">{selectedLead.source}</span>
-                  </div>
+                  {!hiddenStandardFields.includes('source') && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase block">Lead Source</span>
+                      <span className="text-xs text-slate-700 font-semibold block mt-1">{selectedLead.source}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Zonal localization box */}
@@ -1488,13 +1520,15 @@ export default function LeadsPage() {
                       <span>{selectedLead.city ? `${selectedLead.city}, ${selectedLead.state || ''}` : 'No address set'}</span>
                     </div>
                   </div>
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Website URL</span>
-                    <div className="flex items-center gap-1.5 text-xs text-slate-700 font-semibold">
-                      <Globe className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                      <span>{selectedLead.website || 'No website link'}</span>
+                  {!hiddenStandardFields.includes('website') && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase block">Website URL</span>
+                      <div className="flex items-center gap-1.5 text-xs text-slate-700 font-semibold">
+                        <Globe className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                        <span>{selectedLead.website || 'No website link'}</span>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Product Interest & Followup Type Display Card */}
@@ -1524,22 +1558,37 @@ export default function LeadsPage() {
                 )}
 
                 {/* Business sizing */}
-                {(selectedLead.industry || selectedLead.annualRevenue > 0) && (
+                {((selectedLead.industry && !hiddenStandardFields.includes('industry')) || 
+                  (selectedLead.annualRevenue > 0 && !hiddenStandardFields.includes('annualRevenue')) || 
+                  (selectedLead.employeeCount > 0 && !hiddenStandardFields.includes('employeeCount'))) && (
                   <div className="border-t border-slate-100 pt-3.5 grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase block">Industry Sector</span>
-                      <div className="flex items-center gap-1.5 text-xs text-slate-700 font-semibold">
-                        <BriefcaseIcon className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                        <span>{selectedLead.industry || '—'}</span>
+                    {!hiddenStandardFields.includes('industry') && selectedLead.industry && (
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase block">Industry Sector</span>
+                        <div className="flex items-center gap-1.5 text-xs text-slate-700 font-semibold">
+                          <BriefcaseIcon className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                          <span>{selectedLead.industry}</span>
+                        </div>
                       </div>
-                    </div>
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase block">Est. Revenue / Budget</span>
-                      <div className="flex items-center gap-1.5 text-xs text-slate-700 font-semibold">
-                        <DollarSign className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                        <span>₹{(selectedLead.annualRevenue || 0).toLocaleString('en-IN')}</span>
+                    )}
+                    {!hiddenStandardFields.includes('annualRevenue') && selectedLead.annualRevenue > 0 && (
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase block">Est. Revenue / Budget</span>
+                        <div className="flex items-center gap-1.5 text-xs text-slate-700 font-semibold">
+                          <DollarSign className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                          <span>₹{selectedLead.annualRevenue.toLocaleString('en-IN')}</span>
+                        </div>
                       </div>
-                    </div>
+                    )}
+                    {!hiddenStandardFields.includes('employeeCount') && selectedLead.employeeCount > 0 && (
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase block">Employee Count</span>
+                        <div className="flex items-center gap-1.5 text-xs text-slate-700 font-semibold">
+                          <Users className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                          <span>{selectedLead.employeeCount} Employees</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1586,6 +1635,28 @@ export default function LeadsPage() {
                         <span className="text-xs font-extrabold text-slate-800">{field.value}</span>
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Dynamic Org-level Custom Fields */}
+              {orgCustomFieldDefs.length > 0 && selectedLead.customData && Object.keys(selectedLead.customData).length > 0 && (
+                <div className="space-y-2">
+                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <Sparkles className="h-4 w-4 text-indigo-500" />
+                    Custom Organization Details
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3 p-4 rounded-xl bg-white border border-slate-200 shadow-sm">
+                    {orgCustomFieldDefs.map((fieldDef) => {
+                      const value = selectedLead.customData[fieldDef.field_key];
+                      if (value === undefined || value === null || value === '') return null;
+                      return (
+                        <div key={fieldDef.id} className="space-y-0.5">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase truncate block">{fieldDef.field_label}</span>
+                          <span className="text-xs font-extrabold text-slate-800">{String(value)}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -1744,7 +1815,7 @@ export default function LeadsPage() {
               {/* Section 1: Identity & Primary Info */}
               <div className="space-y-4">
                 <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest block font-mono border-b border-slate-100 pb-1">Primary Details</span>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className={`grid grid-cols-1 md:grid-cols-${hiddenStandardFields.includes('designation') ? '2' : '3'} gap-4`}>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">First Name *</label>
                     <input
@@ -1766,19 +1837,21 @@ export default function LeadsPage() {
                       className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 placeholder-slate-400 transition"
                     />
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Job Title / Designation</label>
-                    <input
-                      type="text"
-                      placeholder="E.g. CEO / Purchase Manager"
-                      value={designation}
-                      onChange={(e) => setDesignation(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 placeholder-slate-400 transition"
-                    />
-                  </div>
+                  {!hiddenStandardFields.includes('designation') && (
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Job Title / Designation</label>
+                      <input
+                        type="text"
+                        placeholder="E.g. CEO / Purchase Manager"
+                        value={designation}
+                        onChange={(e) => setDesignation(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 placeholder-slate-400 transition"
+                      />
+                    </div>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className={`grid grid-cols-1 md:grid-cols-${hiddenStandardFields.includes('website') ? '1' : '2'} gap-4`}>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Company Name *</label>
                     <div className="relative">
@@ -1795,28 +1868,30 @@ export default function LeadsPage() {
                       />
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Website URL</label>
-                    <div className="relative">
-                      <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 pointer-events-none">
-                        <Globe className="h-3.5 w-3.5" />
-                      </span>
-                      <input
-                        type="text"
-                        placeholder="https://clientwebsite.com"
-                        value={website}
-                        onChange={(e) => setWebsite(e.target.value)}
-                        className="w-full pl-9 pr-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 placeholder-slate-400 transition"
-                      />
+                  {!hiddenStandardFields.includes('website') && (
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Website URL</label>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 pointer-events-none">
+                          <Globe className="h-3.5 w-3.5" />
+                        </span>
+                        <input
+                          type="text"
+                          placeholder="https://clientwebsite.com"
+                          value={website}
+                          onChange={(e) => setWebsite(e.target.value)}
+                          className="w-full pl-9 pr-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 placeholder-slate-400 transition"
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
 
               {/* Section 2: Contact Details */}
               <div className="space-y-4">
                 <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest block font-mono border-b border-slate-100 pb-1">Communication channels</span>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className={`grid grid-cols-1 md:grid-cols-${hiddenStandardFields.includes('whatsapp') ? '2' : '3'} gap-4`}>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Email Address</label>
                     <div className="relative">
@@ -1847,21 +1922,23 @@ export default function LeadsPage() {
                       />
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">WhatsApp Mobile (outreach)</label>
-                    <div className="relative">
-                      <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-emerald-500 pointer-events-none">
-                        <MessageCircle className="h-3.5 w-3.5" />
-                      </span>
-                      <input
-                        type="text"
-                        placeholder="E.g. 9876543210"
-                        value={whatsapp}
-                        onChange={(e) => setWhatsapp(e.target.value)}
-                        className="w-full pl-9 pr-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-855 placeholder-slate-400 transition"
-                      />
+                  {!hiddenStandardFields.includes('whatsapp') && (
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">WhatsApp Mobile (outreach)</label>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-emerald-500 pointer-events-none">
+                          <MessageCircle className="h-3.5 w-3.5" />
+                        </span>
+                        <input
+                          type="text"
+                          placeholder="E.g. 9876543210"
+                          value={whatsapp}
+                          onChange={(e) => setWhatsapp(e.target.value)}
+                          className="w-full pl-9 pr-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-855 placeholder-slate-400 transition"
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
 
@@ -1905,7 +1982,7 @@ export default function LeadsPage() {
               {/* Section 4: Classification & Priority */}
               <div className="space-y-4">
                 <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest block font-mono border-b border-slate-100 pb-1">CRM Context & Classification</span>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className={`grid grid-cols-1 md:grid-cols-${hiddenStandardFields.includes('source') ? '2' : '3'} gap-4`}>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Lead Priority Tag</label>
                     <select
@@ -1933,23 +2010,25 @@ export default function LeadsPage() {
                       <option value="Future">Contact in Future</option>
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Lead Source</label>
-                    <select
-                      value={leadSource}
-                      onChange={(e) => setLeadSource(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-600 transition"
-                    >
-                      <option value="Website">Website</option>
-                      <option value="Referral">Referral</option>
-                      <option value="Cold Call">Cold Call</option>
-                      <option value="Social Media">Social Media</option>
-                      <option value="LinkedIn">LinkedIn</option>
-                      <option value="Google Search">Google Search</option>
-                      <option value="Event">Event/Exhibition</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </div>
+                  {!hiddenStandardFields.includes('source') && (
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Lead Source</label>
+                      <select
+                        value={leadSource}
+                        onChange={(e) => setLeadSource(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-600 transition"
+                      >
+                        <option value="Website">Website</option>
+                        <option value="Referral">Referral</option>
+                        <option value="Cold Call">Cold Call</option>
+                        <option value="Social Media">Social Media</option>
+                        <option value="LinkedIn">LinkedIn</option>
+                        <option value="Google Search">Google Search</option>
+                        <option value="Event">Event/Exhibition</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                  )}
                 </div>
 
                 {leadStatus === 'Lost' && (
@@ -2005,27 +2084,31 @@ export default function LeadsPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Industry Segment</label>
-                    <input
-                      type="text"
-                      placeholder="E.g. Manufacturing / SaaS"
-                      value={industry}
-                      onChange={(e) => setIndustry(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Estimated Revenue (₹)</label>
-                    <input
-                      type="number"
-                      placeholder="E.g. 500000"
-                      value={annualRevenue}
-                      onChange={(e) => setAnnualRevenue(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
-                    />
-                  </div>
+                <div className={`grid grid-cols-1 md:grid-cols-${3 - [hiddenStandardFields.includes('industry'), hiddenStandardFields.includes('annualRevenue')].filter(Boolean).length} gap-4`}>
+                  {!hiddenStandardFields.includes('industry') && (
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Industry Segment</label>
+                      <input
+                        type="text"
+                        placeholder="E.g. Manufacturing / SaaS"
+                        value={industry}
+                        onChange={(e) => setIndustry(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
+                      />
+                    </div>
+                  )}
+                  {!hiddenStandardFields.includes('annualRevenue') && (
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Estimated Revenue (₹)</label>
+                      <input
+                        type="number"
+                        placeholder="E.g. 500000"
+                        value={annualRevenue}
+                        onChange={(e) => setAnnualRevenue(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
+                      />
+                    </div>
+                  )}
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Next Follow-Up Schedule</label>
                     <input
@@ -2037,53 +2120,57 @@ export default function LeadsPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {(currentUser?.role === 'owner' || currentUser?.role === 'sales_admin') && (
-                    <div className="space-y-2">
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Allocate Lead To</label>
-                      <div className="flex flex-col gap-2">
-                        <select
-                          value={assignedTo}
-                          disabled={autoAssign}
-                          onChange={(e) => setAssignedTo(e.target.value)}
-                          className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-600 transition disabled:opacity-50"
-                        >
-                          <option value="">👤 Assign to Me (Default)</option>
-                          <option value="all">🌐 Assign to All Sales Representatives (Shared Pool)</option>
-                          {salesReps
-                            .filter((rep) => rep.role !== 'owner')
-                            .map((rep) => (
-                              <option key={rep._id} value={rep._id}>
-                                {rep.name} ({rep.role === 'sales_admin' ? 'Manager' : 'Rep'})
-                              </option>
-                            ))}
-                        </select>
-                        <label className="flex items-center gap-2 text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-150 px-3.5 py-2.5 rounded-lg cursor-pointer hover:bg-indigo-100 transition select-none w-fit">
-                          <input
-                            type="checkbox"
-                            checked={autoAssign}
-                            onChange={(e) => {
-                              setAutoAssign(e.target.checked);
-                              if (e.target.checked) setAssignedTo('');
-                            }}
-                            className="rounded text-indigo-650 cursor-pointer"
-                          />
-                          <span>🤖 Auto Distribute (Round-Robin)</span>
-                        </label>
+                {((currentUser?.role === 'owner' || currentUser?.role === 'sales_admin') || !hiddenStandardFields.includes('employeeCount')) && (
+                  <div className={`grid grid-cols-1 md:grid-cols-${(currentUser?.role === 'owner' || currentUser?.role === 'sales_admin') && !hiddenStandardFields.includes('employeeCount') ? '2' : '1'} gap-4`}>
+                    {(currentUser?.role === 'owner' || currentUser?.role === 'sales_admin') && (
+                      <div className="space-y-2">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Allocate Lead To</label>
+                        <div className="flex flex-col gap-2">
+                          <select
+                            value={assignedTo}
+                            disabled={autoAssign}
+                            onChange={(e) => setAssignedTo(e.target.value)}
+                            className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-600 transition disabled:opacity-50"
+                          >
+                            <option value="">👤 Assign to Me (Default)</option>
+                            <option value="all">🌐 Assign to All Sales Representatives (Shared Pool)</option>
+                            {salesReps
+                              .filter((rep) => rep.role !== 'owner')
+                              .map((rep) => (
+                                <option key={rep._id} value={rep._id}>
+                                  {rep.name} ({rep.role === 'sales_admin' ? 'Manager' : 'Rep'})
+                                </option>
+                              ))}
+                          </select>
+                          <label className="flex items-center gap-2 text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-150 px-3.5 py-2.5 rounded-lg cursor-pointer hover:bg-indigo-100 transition select-none w-fit">
+                            <input
+                              type="checkbox"
+                              checked={autoAssign}
+                              onChange={(e) => {
+                                setAutoAssign(e.target.checked);
+                                if (e.target.checked) setAssignedTo('');
+                              }}
+                              className="rounded text-indigo-650 cursor-pointer"
+                            />
+                            <span>🤖 Auto Distribute (Round-Robin)</span>
+                          </label>
+                        </div>
                       </div>
-                    </div>
-                  )}
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Total Employee Count</label>
-                    <input
-                      type="number"
-                      placeholder="E.g. 150"
-                      value={employeeCount}
-                      onChange={(e) => setEmployeeCount(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
-                    />
+                    )}
+                    {!hiddenStandardFields.includes('employeeCount') && (
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Total Employee Count</label>
+                        <input
+                          type="number"
+                          placeholder="E.g. 150"
+                          value={employeeCount}
+                          onChange={(e) => setEmployeeCount(e.target.value)}
+                          className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
+                        />
+                      </div>
+                    )}
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Section 5: Requirements */}
@@ -2100,54 +2187,92 @@ export default function LeadsPage() {
                 </div>
               </div>
 
-              {/* Section 6: Custom Dynamic Fields */}
-              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-4">
+              {/* Section 6: Org-Defined Custom Fields */}
+              <div className="p-4 rounded-xl border border-indigo-100 bg-indigo-50/40 space-y-4">
                 <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">Dynamic Custom Fields</span>
-                  <span className="text-[9px] text-slate-450 font-bold">Perfect for specific project scopes</span>
-                </div>
-                
-                <div className="flex gap-2 items-center">
-                  <input
-                    type="text"
-                    placeholder="Field Name (E.g. Tech Stack)"
-                    value={newFieldLabel}
-                    onChange={(e) => setNewFieldLabel(e.target.value)}
-                    className="flex-1 px-3 py-2 rounded-lg bg-white border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 placeholder-slate-400 transition"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Value (E.g. React & Node)"
-                    value={newFieldValue}
-                    onChange={(e) => setNewFieldValue(e.target.value)}
-                    className="flex-1 px-3 py-2 rounded-lg bg-white border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 placeholder-slate-400 transition"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAddCustomField}
-                    className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition"
-                  >
-                    Add
-                  </button>
+                  <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider font-mono">Custom Fields ({orgCustomFieldDefs.length} defined)</span>
+                  {currentUser?.role === 'owner' && (
+                    <a href="/dashboard/settings/custom-fields" target="_blank" className="text-[9px] text-indigo-500 hover:underline font-bold">⚙️ Manage Fields →</a>
+                  )}
                 </div>
 
-                {customFields.length > 0 && (
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    {customFields.map((field, index) => (
-                      <span 
-                        key={index}
-                        className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-white border border-slate-200 text-[10px] text-slate-700 font-semibold shadow-sm"
-                      >
-                        <span className="font-bold text-slate-400">{field.label}:</span>
-                        <span>{field.value}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveCustomField(index)}
-                          className="hover:text-rose-600 ml-1 text-slate-400 focus:outline-none"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
+                {orgCustomFieldDefs.length === 0 ? (
+                  <div className="text-[11px] text-slate-400 font-medium italic py-2">
+                    No custom fields defined yet.
+                    {currentUser?.role === 'owner' && (
+                      <a href="/dashboard/settings/custom-fields" target="_blank" className="text-indigo-500 hover:underline ml-1 font-bold">Set up Custom Fields →</a>
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {orgCustomFieldDefs.map((fieldDef) => (
+                      <div key={fieldDef.id}>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                          {fieldDef.field_label}
+                          {fieldDef.is_required && <span className="text-rose-500 ml-1">*</span>}
+                        </label>
+                        {fieldDef.field_type === 'text' && (
+                          <input
+                            type="text"
+                            value={orgCustomFieldValues[fieldDef.field_key] || ''}
+                            onChange={(e) => setOrgCustomFieldValues(prev => ({ ...prev, [fieldDef.field_key]: e.target.value }))}
+                            className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 focus:border-indigo-400 focus:outline-none text-xs text-slate-800 transition"
+                          />
+                        )}
+                        {fieldDef.field_type === 'number' && (
+                          <input
+                            type="number"
+                            value={orgCustomFieldValues[fieldDef.field_key] || ''}
+                            onChange={(e) => setOrgCustomFieldValues(prev => ({ ...prev, [fieldDef.field_key]: e.target.value }))}
+                            className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 focus:border-indigo-400 focus:outline-none text-xs text-slate-800 transition"
+                          />
+                        )}
+                        {fieldDef.field_type === 'date' && (
+                          <input
+                            type="date"
+                            value={orgCustomFieldValues[fieldDef.field_key] || ''}
+                            onChange={(e) => setOrgCustomFieldValues(prev => ({ ...prev, [fieldDef.field_key]: e.target.value }))}
+                            className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 focus:border-indigo-400 focus:outline-none text-xs text-slate-800 transition"
+                          />
+                        )}
+                        {fieldDef.field_type === 'textarea' && (
+                          <textarea
+                            rows={2}
+                            value={orgCustomFieldValues[fieldDef.field_key] || ''}
+                            onChange={(e) => setOrgCustomFieldValues(prev => ({ ...prev, [fieldDef.field_key]: e.target.value }))}
+                            className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 focus:border-indigo-400 focus:outline-none text-xs text-slate-800 transition resize-none"
+                          />
+                        )}
+                        {fieldDef.field_type === 'dropdown' && (
+                          <select
+                            value={orgCustomFieldValues[fieldDef.field_key] || ''}
+                            onChange={(e) => setOrgCustomFieldValues(prev => ({ ...prev, [fieldDef.field_key]: e.target.value }))}
+                            className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 focus:border-indigo-400 focus:outline-none text-xs text-slate-800 transition cursor-pointer"
+                          >
+                            <option value="">-- Select --</option>
+                            {(fieldDef.options || []).map((opt) => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                          </select>
+                        )}
+                        {fieldDef.field_type === 'boolean' && (
+                          <div className="flex gap-3">
+                            {['Yes', 'No'].map((opt) => (
+                              <label key={opt} className="flex items-center gap-1.5 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name={`cf_${fieldDef.field_key}`}
+                                  value={opt}
+                                  checked={orgCustomFieldValues[fieldDef.field_key] === opt}
+                                  onChange={() => setOrgCustomFieldValues(prev => ({ ...prev, [fieldDef.field_key]: opt }))}
+                                  className="accent-indigo-500"
+                                />
+                                <span className="text-xs font-bold text-slate-600">{opt}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     ))}
                   </div>
                 )}
@@ -2240,34 +2365,40 @@ export default function LeadsPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Job Title / Designation</label>
-                    <input
-                      type="text"
-                      placeholder="E.g. Purchasing Manager / Founder"
-                      value={editLeadDesignation}
-                      onChange={(e) => setEditLeadDesignation(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
-                    />
+                {(!hiddenStandardFields.includes('designation') || !hiddenStandardFields.includes('website')) && (
+                  <div className={`grid grid-cols-1 md:grid-cols-${2 - [hiddenStandardFields.includes('designation'), hiddenStandardFields.includes('website')].filter(Boolean).length} gap-4`}>
+                    {!hiddenStandardFields.includes('designation') && (
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Job Title / Designation</label>
+                        <input
+                          type="text"
+                          placeholder="E.g. Purchasing Manager / Founder"
+                          value={editLeadDesignation}
+                          onChange={(e) => setEditLeadDesignation(e.target.value)}
+                          className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
+                        />
+                      </div>
+                    )}
+                    {!hiddenStandardFields.includes('website') && (
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Corporate Website</label>
+                        <input
+                          type="url"
+                          placeholder="E.g. https://example.com"
+                          value={editLeadWebsite}
+                          onChange={(e) => setEditLeadWebsite(e.target.value)}
+                          className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
+                        />
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Corporate Website</label>
-                    <input
-                      type="url"
-                      placeholder="E.g. https://example.com"
-                      value={editLeadWebsite}
-                      onChange={(e) => setEditLeadWebsite(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
-                    />
-                  </div>
-                </div>
+                )}
               </div>
 
               {/* Section 2: Contact Channels */}
               <div className="space-y-4 pt-2">
                 <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest block font-mono border-b border-slate-100 pb-1">Communication channels</span>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className={`grid grid-cols-1 md:grid-cols-${hiddenStandardFields.includes('whatsapp') ? '2' : '3'} gap-4`}>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Email Address</label>
                     <input
@@ -2288,16 +2419,18 @@ export default function LeadsPage() {
                       className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
                     />
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">WhatsApp Contact Number</label>
-                    <input
-                      type="tel"
-                      placeholder="E.g. +91 9876543210"
-                      value={editLeadWhatsapp}
-                      onChange={(e) => setEditLeadWhatsapp(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
-                    />
-                  </div>
+                  {!hiddenStandardFields.includes('whatsapp') && (
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">WhatsApp Contact Number</label>
+                      <input
+                        type="tel"
+                        placeholder="E.g. +91 9876543210"
+                        value={editLeadWhatsapp}
+                        onChange={(e) => setEditLeadWhatsapp(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -2342,7 +2475,7 @@ export default function LeadsPage() {
               <div className="space-y-4 pt-2">
                 <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest block font-mono border-b border-slate-100 pb-1">CRM Context & Classification</span>
                 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className={`grid grid-cols-1 md:grid-cols-${hiddenStandardFields.includes('source') ? '2' : '3'} gap-4`}>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Lead Priority Tag</label>
                     <select
@@ -2370,23 +2503,25 @@ export default function LeadsPage() {
                       <option value="Future">Contact in Future</option>
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Lead Source</label>
-                    <select
-                      value={editLeadSource}
-                      onChange={(e) => setEditLeadSource(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-655 transition"
-                    >
-                      <option value="Website">Website</option>
-                      <option value="Referral">Referral</option>
-                      <option value="Cold Call">Cold Call</option>
-                      <option value="Social Media">Social Media</option>
-                      <option value="LinkedIn">LinkedIn</option>
-                      <option value="Google Search">Google Search</option>
-                      <option value="Event">Event/Exhibition</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </div>
+                  {!hiddenStandardFields.includes('source') && (
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Lead Source</label>
+                      <select
+                        value={editLeadSource}
+                        onChange={(e) => setEditLeadSource(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-655 transition"
+                      >
+                        <option value="Website">Website</option>
+                        <option value="Referral">Referral</option>
+                        <option value="Cold Call">Cold Call</option>
+                        <option value="Social Media">Social Media</option>
+                        <option value="LinkedIn">LinkedIn</option>
+                        <option value="Google Search">Google Search</option>
+                        <option value="Event">Event/Exhibition</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                  )}
                 </div>
 
                 {editLeadStatus === 'Lost' && (
@@ -2443,27 +2578,31 @@ export default function LeadsPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Industry Segment</label>
-                    <input
-                      type="text"
-                      placeholder="E.g. Manufacturing / SaaS"
-                      value={editLeadIndustry}
-                      onChange={(e) => setEditLeadIndustry(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Estimated Revenue (₹)</label>
-                    <input
-                      type="number"
-                      placeholder="E.g. 500000"
-                      value={editLeadAnnualRevenue}
-                      onChange={(e) => setEditLeadAnnualRevenue(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
-                    />
-                  </div>
+                <div className={`grid grid-cols-1 md:grid-cols-${3 - [hiddenStandardFields.includes('industry'), hiddenStandardFields.includes('annualRevenue')].filter(Boolean).length} gap-4`}>
+                  {!hiddenStandardFields.includes('industry') && (
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Industry Segment</label>
+                      <input
+                        type="text"
+                        placeholder="E.g. Manufacturing / SaaS"
+                        value={editLeadIndustry}
+                        onChange={(e) => setEditLeadIndustry(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
+                      />
+                    </div>
+                  )}
+                  {!hiddenStandardFields.includes('annualRevenue') && (
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Estimated Revenue (₹)</label>
+                      <input
+                        type="number"
+                        placeholder="E.g. 500000"
+                        value={editLeadAnnualRevenue}
+                        onChange={(e) => setEditLeadAnnualRevenue(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
+                      />
+                    </div>
+                  )}
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Next Follow-Up Schedule</label>
                     <input
@@ -2475,39 +2614,43 @@ export default function LeadsPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {(currentUser?.role === 'owner' || currentUser?.role === 'sales_admin') && (
-                    <div className="space-y-2">
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Allocate Lead To</label>
-                      <div className="flex flex-col gap-2">
-                        <select
-                          value={editLeadAssignedTo}
-                          onChange={(e) => setEditLeadAssignedTo(e.target.value)}
-                          className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-600 transition"
-                        >
-                          <option value="all">🌐 Assign to All Sales Representatives (Shared Pool)</option>
-                          {salesReps
-                            .filter((rep) => rep.role !== 'owner')
-                            .map((rep) => (
-                              <option key={rep._id} value={rep._id}>
-                                {rep.name} ({rep.role === 'sales_admin' ? 'Manager' : 'Rep'})
-                              </option>
-                            ))}
-                        </select>
+                {((currentUser?.role === 'owner' || currentUser?.role === 'sales_admin') || !hiddenStandardFields.includes('employeeCount')) && (
+                  <div className={`grid grid-cols-1 md:grid-cols-${(currentUser?.role === 'owner' || currentUser?.role === 'sales_admin') && !hiddenStandardFields.includes('employeeCount') ? '2' : '1'} gap-4`}>
+                    {(currentUser?.role === 'owner' || currentUser?.role === 'sales_admin') && (
+                      <div className="space-y-2">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Allocate Lead To</label>
+                        <div className="flex flex-col gap-2">
+                          <select
+                            value={editLeadAssignedTo}
+                            onChange={(e) => setEditLeadAssignedTo(e.target.value)}
+                            className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-600 transition"
+                          >
+                            <option value="all">🌐 Assign to All Sales Representatives (Shared Pool)</option>
+                            {salesReps
+                              .filter((rep) => rep.role !== 'owner')
+                              .map((rep) => (
+                                <option key={rep._id} value={rep._id}>
+                                  {rep.name} ({rep.role === 'sales_admin' ? 'Manager' : 'Rep'})
+                                </option>
+                              ))}
+                          </select>
+                        </div>
                       </div>
-                    </div>
-                  )}
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Total Employee Count</label>
-                    <input
-                      type="number"
-                      placeholder="E.g. 150"
-                      value={editLeadEmployeeCount}
-                      onChange={(e) => setEditLeadEmployeeCount(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
-                    />
+                    )}
+                    {!hiddenStandardFields.includes('employeeCount') && (
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Total Employee Count</label>
+                        <input
+                          type="number"
+                          placeholder="E.g. 150"
+                          value={editLeadEmployeeCount}
+                          onChange={(e) => setEditLeadEmployeeCount(e.target.value)}
+                          className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
+                        />
+                      </div>
+                    )}
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Section 5: Requirements */}
@@ -2523,6 +2666,87 @@ export default function LeadsPage() {
                   ></textarea>
                 </div>
               </div>
+
+              {/* Section 6: Org-Defined Custom Fields (Edit Mode) */}
+              {orgCustomFieldDefs.length > 0 && (
+                <div className="p-4 rounded-xl border border-indigo-100 bg-indigo-50/40 space-y-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider font-mono">Custom Fields ({orgCustomFieldDefs.length} defined)</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {orgCustomFieldDefs.map((fieldDef) => (
+                      <div key={fieldDef.id}>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                          {fieldDef.field_label}
+                          {fieldDef.is_required && <span className="text-rose-500 ml-1">*</span>}
+                        </label>
+                        {fieldDef.field_type === 'text' && (
+                          <input
+                            type="text"
+                            value={editLeadCustomData[fieldDef.field_key] || ''}
+                            onChange={(e) => setEditLeadCustomData(prev => ({ ...prev, [fieldDef.field_key]: e.target.value }))}
+                            className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 focus:border-indigo-400 focus:outline-none text-xs text-slate-800 transition"
+                          />
+                        )}
+                        {fieldDef.field_type === 'number' && (
+                          <input
+                            type="number"
+                            value={editLeadCustomData[fieldDef.field_key] || ''}
+                            onChange={(e) => setEditLeadCustomData(prev => ({ ...prev, [fieldDef.field_key]: e.target.value }))}
+                            className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 focus:border-indigo-400 focus:outline-none text-xs text-slate-800 transition"
+                          />
+                        )}
+                        {fieldDef.field_type === 'date' && (
+                          <input
+                            type="date"
+                            value={editLeadCustomData[fieldDef.field_key] || ''}
+                            onChange={(e) => setEditLeadCustomData(prev => ({ ...prev, [fieldDef.field_key]: e.target.value }))}
+                            className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 focus:border-indigo-400 focus:outline-none text-xs text-slate-800 transition"
+                          />
+                        )}
+                        {fieldDef.field_type === 'textarea' && (
+                          <textarea
+                            rows={2}
+                            value={editLeadCustomData[fieldDef.field_key] || ''}
+                            onChange={(e) => setEditLeadCustomData(prev => ({ ...prev, [fieldDef.field_key]: e.target.value }))}
+                            className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 focus:border-indigo-400 focus:outline-none text-xs text-slate-800 transition resize-none"
+                          />
+                        )}
+                        {fieldDef.field_type === 'dropdown' && (
+                          <select
+                            value={editLeadCustomData[fieldDef.field_key] || ''}
+                            onChange={(e) => setEditLeadCustomData(prev => ({ ...prev, [fieldDef.field_key]: e.target.value }))}
+                            className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 focus:border-indigo-400 focus:outline-none text-xs text-slate-800 transition cursor-pointer"
+                          >
+                            <option value="">-- Select --</option>
+                            {(fieldDef.options || []).map((opt) => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                          </select>
+                        )}
+                        {fieldDef.field_type === 'boolean' && (
+                          <div className="flex gap-3">
+                            {['Yes', 'No'].map((opt) => (
+                              <label key={opt} className="flex items-center gap-1.5 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name={`edit_cf_${fieldDef.field_key}`}
+                                  value={opt}
+                                  checked={editLeadCustomData[fieldDef.field_key] === opt}
+                                  onChange={() => setEditLeadCustomData(prev => ({ ...prev, [fieldDef.field_key]: opt }))}
+                                  className="accent-indigo-500"
+                                />
+                                <span className="text-xs font-bold text-slate-600">{opt}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Submit Buttons */}
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">

@@ -18,7 +18,8 @@ import {
   PlusCircle,
   Wallet,
   ArrowRight,
-  TrendingDown
+  TrendingDown,
+  Trash2
 } from 'lucide-react';
 
 export default function InvoicesPage() {
@@ -514,7 +515,7 @@ export default function InvoicesPage() {
                   <div className="text-[10px] text-slate-500 mt-3.5 space-y-0.5">
                     <p>Building 4A, Tech Industrial Hub, Pune - 411001</p>
                     <p>Email: billing@innonsh.com | Contact: +91 20 6755432</p>
-                    <p className="font-bold font-mono text-[9px] text-slate-655">GSTIN: 27AABCI4567K1Z4 (Sample)</p>
+                    <p className="font-bold font-mono text-[9px] text-slate-655">GSTIN: {currentUser?.gstin || '27AABCI4567K1Z4 (Sample)'}</p>
                   </div>
                 </div>
 

@@ -54,22 +54,35 @@ export function verifyToken(token) {
  */
 export function getUserFromRequest(req) {
   try {
+    let decoded = null;
+
     // 1. Check Authorization Header (Bearer token)
     const authHeader = req.headers.get('authorization');
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split(' ')[1];
-      return verifyToken(token);
+      decoded = verifyToken(token);
+    } else {
+      // 2. Check HTTP-only cookies
+      const cookieHeader = req.headers.get('cookie') || '';
+      const cookies = Object.fromEntries(
+        cookieHeader.split(';').map((c) => c.trim().split('='))
+      );
+      const token = cookies['token'];
+
+      if (token) {
+        decoded = verifyToken(token);
+      }
     }
 
-    // 2. Check HTTP-only cookies
-    const cookieHeader = req.headers.get('cookie') || '';
-    const cookies = Object.fromEntries(
-      cookieHeader.split(';').map((c) => c.trim().split('='))
-    );
-    const token = cookies['token'];
-
-    if (token) {
-      return verifyToken(token);
+    if (decoded) {
+      // STRICT MULTI-TENANT ISOLATION GATING:
+      // Non-superadmins must have a valid orgId inside their session token to access any API.
+      // If it is a legacy single-tenant session token without orgId, invalidate it immediately.
+      if (!decoded.isSuperAdmin && !decoded.orgId) {
+        console.warn(`⚠️ Security Alert: Rejected legacy token without orgId for user ${decoded.email}`);
+        return null;
+      }
+      return decoded;
     }
 
     return null;
@@ -77,3 +90,17 @@ export function getUserFromRequest(req) {
     return null;
   }
 }
+
+/**
+ * Verifies if the requester has active access to a specific CRM module
+ * @param {object} decodedUser - Decoded JWT payload
+ * @param {string} moduleName - Name of module to gate
+ * @returns {boolean} Access status
+ */
+export function checkModuleAccess(decodedUser, moduleName) {
+  if (!decodedUser) return false;
+  if (decodedUser.isSuperAdmin) return true; // Super Admins bypass all module checks
+  if (!decodedUser.enabledModules) return true; // Fallback for backward compatibility
+  return decodedUser.enabledModules.includes(moduleName);
+}
+

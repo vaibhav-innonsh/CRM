@@ -18,6 +18,7 @@ import {
   PieChart,
   ShieldAlert,
   Lock,
+  LifeBuoy,
   Network,
   Bell,
   Settings, 
@@ -27,7 +28,22 @@ import {
   Menu,
   X,
   Loader2,
-  Mail
+  Mail,
+  Sparkles,
+  Settings2,
+  Building,
+  Heart,
+  Activity,
+  Building2,
+  Layers,
+  MapPin,
+  Search,
+  BookOpen,
+  CreditCard,
+  Handshake,
+  FolderOpen,
+  KeyRound,
+  Ban
 } from 'lucide-react';
 
 export default function DashboardLayout({ children }) {
@@ -39,6 +55,204 @@ export default function DashboardLayout({ children }) {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [bellDropdownOpen, setBellDropdownOpen] = useState(false);
+  
+  // Dynamic Module Activation Requests States
+  const [moduleRequests, setModuleRequests] = useState([]);
+  const [requestingModule, setRequestingModule] = useState(false);
+
+  const fetchModuleRequests = async () => {
+    try {
+      const res = await fetch('/api/tenant/module-requests');
+      if (res.ok) {
+        const data = await res.json();
+        setModuleRequests(data.requests || []);
+      }
+    } catch (err) {
+      console.error('Fetch tenant module requests failed:', err);
+    }
+  };
+
+  const handleRequestModule = async (modName) => {
+    if (user?.role !== 'owner') {
+      alert('Only organization owners can request feature module activations.');
+      return;
+    }
+    setRequestingModule(true);
+    try {
+      const res = await fetch('/api/tenant/module-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ moduleName: modName })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        await fetchModuleRequests();
+        alert(`🎉 Activation request submitted successfully! Super Admin has been notified.`);
+      } else {
+        alert(data.error || 'Failed to submit activation request.');
+      }
+    } catch (err) {
+      console.error('Submit module request error:', err);
+      alert('Could not connect to the server.');
+    } finally {
+      setRequestingModule(false);
+    }
+  };
+
+  const moduleMapping = {
+    '/dashboard/support': 'support',
+    '/dashboard/leads': 'leads',
+    '/dashboard/contacts': 'contacts',
+    '/dashboard/deals': 'deals',
+    '/dashboard/emails': 'emails',
+    '/dashboard/tasks': 'tasks',
+    '/dashboard/calls': 'calls',
+    '/dashboard/meetings': 'meetings',
+    '/dashboard/products': 'products',
+    '/dashboard/quotations': 'quotations',
+    '/dashboard/invoices': 'invoices',
+    '/dashboard/reports': 'reports',
+    '/dashboard/analytics': 'analytics',
+    '/dashboard/users': 'users',
+    '/dashboard/roles': 'roles',
+    '/dashboard/teams': 'teams',
+    '/dashboard/real-estate': 'real-estate',
+    '/dashboard/real-estate/leads': 'real-estate',
+    '/dashboard/real-estate/contacts': 'real-estate',
+    '/dashboard/real-estate/properties': 'real-estate',
+    '/dashboard/real-estate/projects': 'real-estate',
+    '/dashboard/real-estate/units': 'real-estate',
+    '/dashboard/real-estate/visits': 'real-estate',
+    '/dashboard/real-estate/matching': 'real-estate',
+    '/dashboard/real-estate/bookings': 'real-estate',
+    '/dashboard/real-estate/payments': 'real-estate',
+    '/dashboard/real-estate/partners': 'real-estate',
+    '/dashboard/real-estate/blocking': 'real-estate',
+    '/dashboard/real-estate/documents': 'real-estate',
+    '/dashboard/real-estate/possessions': 'real-estate',
+    '/dashboard/healthcare': 'healthcare',
+    '/dashboard/healthcare/leads': 'healthcare',
+    '/dashboard/healthcare/patients': 'healthcare',
+    '/dashboard/healthcare/appointments': 'healthcare',
+    '/dashboard/healthcare/doctors': 'healthcare',
+    '/dashboard/healthcare/records': 'healthcare',
+    '/dashboard/healthcare/prescriptions': 'healthcare',
+    '/dashboard/healthcare/lab-tests': 'healthcare',
+    '/dashboard/healthcare/admissions': 'healthcare',
+    '/dashboard/healthcare/billing': 'healthcare',
+    '/dashboard/healthcare/claims': 'healthcare',
+    '/dashboard/healthcare/pharmacy': 'healthcare',
+  };
+
+  const activeModuleKey = Object.keys(moduleMapping).find(
+    path => pathname === path || pathname.startsWith(path + '/')
+  );
+  const activeModuleName = activeModuleKey ? moduleMapping[activeModuleKey] : null;
+
+  const isModuleDisabled = activeModuleName && user && !user.isSuperAdmin && user.enabledModules && !user.enabledModules.includes(activeModuleName);
+
+  const getModuleDisplayName = (slug) => {
+    switch (slug) {
+      case 'leads': return 'Leads Directory';
+      case 'contacts': return 'Contacts Directory';
+      case 'deals': return 'Deals Pipeline';
+      case 'emails': return 'Email Hub';
+      case 'tasks': return 'Tasks Manager & Reminders';
+      case 'calls': return 'Call Logs & Record Suite';
+      case 'meetings': return 'Meetings & Calendar Scheduler';
+      case 'products': return 'Products Catalogue';
+      case 'quotations': return 'Quotations Builder';
+      case 'invoices': return 'Invoices & Billing Hub';
+      case 'reports': return 'Sales Reports Builder';
+      case 'analytics': return 'BI Analytics & Forecasting';
+      case 'users': return 'Users & Employee Directory';
+      case 'roles': return 'Roles & Permission Gates';
+      case 'teams': return 'Teams & Department Manager';
+      case 'healthcare': return 'Healthcare Suite';
+      case 'support': return 'Customer Support';
+      default: return slug.charAt(0).toUpperCase() + slug.slice(1);
+    }
+  };
+
+  const renderLockedModuleScreen = () => {
+    const displayName = getModuleDisplayName(activeModuleName);
+    const pendingRequest = moduleRequests.find(r => r.module_name === activeModuleName && r.status === 'Pending');
+    const isRequested = !!pendingRequest;
+
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-slate-800 font-sans p-6 select-none">
+        <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-8 shadow-xl text-center space-y-6 relative overflow-hidden">
+          <div className="absolute top-0 right-0 h-32 w-32 rounded-full bg-indigo-500/5 blur-[50px] pointer-events-none"></div>
+          
+          {/* Lock Icon */}
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-indigo-50 border border-indigo-100 text-indigo-500 shadow-sm animate-pulse">
+            <Lock className="h-6 w-6 text-indigo-650" />
+          </div>
+
+          <div className="space-y-2">
+            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-mono">Subscription Access Lock</span>
+            <h2 className="text-base font-black text-slate-800 leading-tight">
+              {displayName} Module Locked
+            </h2>
+            <p className="text-xs text-slate-500 font-semibold leading-relaxed px-2">
+              Aapki organization ke paas <b>{displayName}</b> module ka active license nahi hai. 
+              Kripya is module ko activate karne ke liye platform Super Admin se sampark karein.
+            </p>
+          </div>
+
+          {/* REQUEST MODULE BUTTON LOOP */}
+          {user && user.role === 'owner' && (
+            <div className="pt-4 border-t border-slate-100 flex flex-col items-center w-full">
+              {isRequested ? (
+                <div className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-black rounded-xl select-none animate-pulse">
+                  <span className="h-2 w-2 rounded-full bg-amber-500"></span>
+                  ⏳ Request Pending Admin Review
+                </div>
+              ) : (
+                <button
+                  onClick={() => handleRequestModule(activeModuleName)}
+                  disabled={requestingModule}
+                  className="w-full py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 disabled:from-slate-200 disabled:to-slate-300 text-white text-xs font-black rounded-xl shadow-lg shadow-emerald-550/15 transition cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  {requestingModule ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Submitting Request...
+                    </>
+                  ) : (
+                    <>
+                      <span>⚡</span> Request Module Activation
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          )}
+
+          {user && user.role !== 'owner' && (
+            <p className="text-[10px] text-slate-400 font-bold italic pt-2 border-t border-slate-100">
+              🔒 Feature activation request can only be submitted by organization owners.
+            </p>
+          )}
+
+          <div className="flex items-center gap-2 pt-2">
+            <button
+              onClick={() => router.back()}
+              className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 hover:border-slate-350 text-slate-700 hover:text-slate-800 text-xs font-bold rounded-xl transition cursor-pointer"
+            >
+              Go Back
+            </button>
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="flex-1 py-2.5 bg-indigo-500 hover:bg-indigo-400 text-white text-xs font-black rounded-xl shadow-lg shadow-indigo-500/10 transition cursor-pointer"
+            >
+              Back to Dashboard
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // Fetch real-time user notification logs
   const fetchNotifications = async () => {
@@ -87,6 +301,18 @@ export default function DashboardLayout({ children }) {
           setUser(data.user);
           // Fetch notifications upon successful login verification
           fetchNotifications();
+          if (data.user && !data.user.isSuperAdmin) {
+            // Fetch dynamic module requests
+            try {
+              const reqsRes = await fetch('/api/tenant/module-requests');
+              if (reqsRes.ok) {
+                const reqsData = await reqsRes.json();
+                setModuleRequests(reqsData.requests || []);
+              }
+            } catch (reqsErr) {
+              console.error('Fetch tenant module requests failed:', reqsErr);
+            }
+          }
         } else {
           router.push('/login');
         }
@@ -131,11 +357,52 @@ export default function DashboardLayout({ children }) {
       ]
     },
     {
+      title: 'Real Estate Spec',
+      links: [
+        { name: 'RE Overview', href: '/dashboard/real-estate', icon: Building2 },
+        { name: 'RE Leads', href: '/dashboard/real-estate/leads', icon: Users },
+        { name: 'RE Contacts', href: '/dashboard/real-estate/contacts', icon: UserCheck },
+        { name: 'Properties', href: '/dashboard/real-estate/properties', icon: Building },
+        { name: 'Projects', href: '/dashboard/real-estate/projects', icon: Layers },
+        { name: 'Unit Inventory', href: '/dashboard/real-estate/units', icon: Lock },
+        { name: 'Site Visits', href: '/dashboard/real-estate/visits', icon: MapPin },
+        { name: 'Property Matching', href: '/dashboard/real-estate/matching', icon: Search },
+        { name: 'Bookings', href: '/dashboard/real-estate/bookings', icon: BookOpen },
+        { name: 'Payment Plans', href: '/dashboard/real-estate/payments', icon: CreditCard },
+        { name: 'Channel Partners', href: '/dashboard/real-estate/partners', icon: Handshake },
+        { name: 'Blocking', href: '/dashboard/real-estate/blocking', icon: Ban },
+        { name: 'Documents Vault', href: '/dashboard/real-estate/documents', icon: FolderOpen },
+        { name: 'Possessions', href: '/dashboard/real-estate/possessions', icon: KeyRound },
+      ]
+    },
+    {
+      title: 'Healthcare Spec',
+      links: [
+        { name: 'Patient Prospects', href: '/dashboard/healthcare/leads', icon: Sparkles },
+        { name: 'Patients', href: '/dashboard/healthcare/patients', icon: Users },
+        { name: 'Appointments', href: '/dashboard/healthcare/appointments', icon: Calendar },
+        { name: 'Doctors', href: '/dashboard/healthcare/doctors', icon: UserCog },
+        { name: 'Medical Records', href: '/dashboard/healthcare/records', icon: FileText },
+        { name: 'Prescriptions', href: '/dashboard/healthcare/prescriptions', icon: Heart },
+        { name: 'Lab Tests', href: '/dashboard/healthcare/lab-tests', icon: Activity },
+        { name: 'Admissions', href: '/dashboard/healthcare/admissions', icon: Building },
+        { name: 'Billing', href: '/dashboard/healthcare/billing', icon: Receipt },
+        { name: 'Insurance Claims', href: '/dashboard/healthcare/claims', icon: ShieldAlert },
+        { name: 'Pharmacy', href: '/dashboard/healthcare/pharmacy', icon: Package },
+      ]
+    },
+    {
       title: 'Activities',
       links: [
         { name: 'Tasks', href: '/dashboard/tasks', icon: CheckSquare },
         { name: 'Calls', href: '/dashboard/calls', icon: PhoneCall },
         { name: 'Meetings', href: '/dashboard/meetings', icon: Calendar },
+      ]
+    },
+    {
+      title: 'Customer Support',
+      links: [
+        { name: 'Support Tickets', href: '/dashboard/support', icon: LifeBuoy },
       ]
     },
     {
@@ -167,6 +434,8 @@ export default function DashboardLayout({ children }) {
         { name: 'Notifications', href: '/dashboard/notifications', icon: Bell },
         { name: 'Settings', href: '/dashboard/settings', icon: Settings },
         { name: 'Profile', href: '/dashboard/profile', icon: UserCog },
+        { name: 'CRM Add-ons', href: '/dashboard/settings/modules', icon: Sparkles, ownerOnly: true },
+        { name: 'Custom Fields', href: '/dashboard/settings/custom-fields', icon: Settings2, ownerOnly: true },
       ]
     }
   ];
@@ -204,8 +473,19 @@ export default function DashboardLayout({ children }) {
 
   const renderNavLinks = (isMobile = false) => {
     return navigationCategories.map((category) => {
-      // Role-Based Access Filters
+      // Dynamic Modules Gating & Role-Based Access Filters
       const allowedLinks = category.links.filter((link) => {
+        // Owner-only links: hide from non-owners
+        if (link.ownerOnly && user?.role !== 'owner') return false;
+
+        // 0. Modules Gating Check (Super Admins automatically bypass)
+        if (user && !user.isSuperAdmin) {
+          const moduleKey = moduleMapping[link.href];
+          if (moduleKey && user.enabledModules && !user.enabledModules.includes(moduleKey)) {
+            return false; // Module is disabled for this tenant company
+          }
+        }
+
         // 1. Owner has access to everything
         if (user?.role === 'owner') return true;
 
@@ -228,11 +508,26 @@ export default function DashboardLayout({ children }) {
             'Profile',
             'Users Directory',
             'Roles & Permissions',
-            'Teams'
+            'Teams',
+            'RE Overview',
+            'RE Leads',
+            'RE Contacts',
+            'Properties',
+            'Projects',
+            'Unit Inventory',
+            'Site Visits',
+            'Property Matching',
+            'Bookings',
+            'Payment Plans',
+            'Channel Partners',
+            'Blocking',
+            'Documents Vault',
+            'Possessions',
+            'Support Tickets',
           ];
           return managerAllowed.includes(link.name);
         }
-
+ 
         // 3. Sales Representative (sales_rep) sees specified modules
         if (user?.role === 'sales_rep') {
           const repAllowed = [
@@ -245,7 +540,22 @@ export default function DashboardLayout({ children }) {
             'Calls',
             'Meetings',
             'Notifications',
-            'Profile'
+            'Profile',
+            'RE Overview',
+            'RE Leads',
+            'RE Contacts',
+            'Properties',
+            'Projects',
+            'Unit Inventory',
+            'Site Visits',
+            'Property Matching',
+            'Bookings',
+            'Payment Plans',
+            'Channel Partners',
+            'Blocking',
+            'Documents Vault',
+            'Possessions',
+            'Support Tickets',
           ];
           return repAllowed.includes(link.name);
         }
@@ -306,8 +616,8 @@ export default function DashboardLayout({ children }) {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500 font-black text-white text-base shadow-md shadow-emerald-500/10">
             I
           </div>
-          <span className="text-base font-extrabold text-slate-800">
-            Innonsh CRM <span className="text-[10px] text-emerald-500 font-mono ml-0.5">v1.0</span>
+          <span className="text-base font-extrabold text-slate-800 truncate" title={user?.companyName ? `${user.companyName} CRM` : "Innonsh CRM"}>
+            {user?.companyName ? user.companyName : "Innonsh"} <span className="text-[10px] text-emerald-500 font-mono ml-0.5">v1.0</span>
           </span>
         </div>
 
@@ -348,7 +658,9 @@ export default function DashboardLayout({ children }) {
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500 font-bold text-white text-sm shadow-sm">
                   I
                 </div>
-                <span className="text-sm font-bold text-slate-800">Innonsh CRM</span>
+                <span className="text-sm font-bold text-slate-800 truncate">
+                  {user?.companyName ? user.companyName : "Innonsh CRM"}
+                </span>
               </div>
               <button 
                 onClick={() => setMobileSidebarOpen(false)} 
@@ -399,9 +711,16 @@ export default function DashboardLayout({ children }) {
             </button>
             
             {/* Welcome greeting */}
-            <span className="text-xs md:text-sm font-bold text-slate-700">
-              Welcome back, <strong className="text-slate-900">{user?.name}</strong>
-            </span>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+              <span className="text-xs md:text-sm font-bold text-slate-700">
+                Welcome back, <strong className="text-slate-900">{user?.name}</strong>
+              </span>
+              {user?.companyName && (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-250 font-mono w-max select-none animate-in fade-in duration-300">
+                  🏢 {user.companyName}
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-4 relative">
@@ -493,7 +812,7 @@ export default function DashboardLayout({ children }) {
 
         {/* Dynamic Inner Layout Body */}
         <main className="flex-1 overflow-y-auto bg-slate-50 p-6 md:p-8">
-          {children}
+          {isModuleDisabled ? renderLockedModuleScreen() : children}
         </main>
       </div>
     </div>

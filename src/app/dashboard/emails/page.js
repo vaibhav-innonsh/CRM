@@ -409,7 +409,7 @@ export default function EmailHubPage() {
       </div>
 
       {/* Analytics Summary Cards Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Card 1: Total Dispatch */}
         <div className="bg-white border border-slate-200 p-5 rounded-xl shadow-sm flex items-center justify-between hover:shadow-md transition duration-200">
           <div>
@@ -422,22 +422,7 @@ export default function EmailHubPage() {
           </div>
         </div>
 
-        {/* Card 2: Opens Tracker */}
-        <div className="bg-white border border-slate-200 p-5 rounded-xl shadow-sm flex items-center justify-between hover:shadow-md transition duration-200">
-          <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Opens Summary</span>
-            <div className="flex items-baseline gap-2 mt-1">
-              <span className="text-2xl font-black text-slate-800 block">{totalOpens}</span>
-              <span className="text-xs font-bold text-emerald-600 font-mono">({openRate}%)</span>
-            </div>
-            <span className="text-[10px] text-slate-500 font-medium block mt-1.5">Unique views registered</span>
-          </div>
-          <div className="h-11 w-11 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-500 shrink-0">
-            <Eye className="h-5 w-5" />
-          </div>
-        </div>
-
-        {/* Card 3: Proposal Downloads */}
+        {/* Card 2: Proposal Downloads */}
         <div className="bg-white border border-slate-200 p-5 rounded-xl shadow-sm flex items-center justify-between hover:shadow-md transition duration-200">
           <div>
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">PDF Downloads</span>
@@ -445,14 +430,14 @@ export default function EmailHubPage() {
               <span className="text-2xl font-black text-slate-800 block">{totalDownloads}</span>
               <span className="text-xs font-bold text-sky-600 font-mono">({downloadRate}%)</span>
             </div>
-            <span className="text-[10px] text-slate-500 font-medium block mt-1.5">Lead Score boosted (+20)</span>
+            <span className="text-[10px] text-slate-500 font-medium block mt-1.5">High-Intent Document Fetches</span>
           </div>
           <div className="h-11 w-11 rounded-lg bg-sky-50 border border-sky-100 flex items-center justify-center text-sky-550 shrink-0">
             <Download className="h-5 w-5" />
           </div>
         </div>
 
-        {/* Card 4: Response Rate */}
+        {/* Card 3: Response Rate */}
         <div className="bg-white border border-slate-200 p-5 rounded-xl shadow-sm flex items-center justify-between hover:shadow-md transition duration-200">
           <div>
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Client Responses</span>
@@ -771,7 +756,6 @@ export default function EmailHubPage() {
                 <tr className="border-b border-slate-100 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
                   <th className="pb-3 text-left pl-2">Recipient</th>
                   <th className="pb-3 text-left">Subject Line</th>
-                  <th className="pb-3 text-center">Open Statistics</th>
                   <th className="pb-3 text-center">Proposal PDF File</th>
                   <th className="pb-3 text-center">Status States</th>
                   <th className="pb-3 text-right pr-2">Dispatched At</th>
@@ -802,16 +786,6 @@ export default function EmailHubPage() {
                         <span className="text-[10px] text-slate-500 block truncate mt-0.5 max-w-[200px]">
                           {email.body}
                         </span>
-                      </td>
-
-                      {/* Opens counter */}
-                      <td className="py-3.5 text-center">
-                        <div className="inline-flex items-center justify-center gap-1.5 px-2 py-1 rounded bg-slate-50 border border-slate-200 font-bold">
-                          <Eye className={`h-3.5 w-3.5 ${email.opensCount > 0 ? 'text-emerald-500' : 'text-slate-400'}`} />
-                          <span className={email.opensCount > 0 ? 'text-emerald-700 font-extrabold' : 'text-slate-600'}>
-                            {email.opensCount || 0} opens
-                          </span>
-                        </div>
                       </td>
 
                       {/* Attached proposal */}
@@ -845,12 +819,12 @@ export default function EmailHubPage() {
                             {email.channel === 'whatsapp' ? 'WA 📱' : (email.channel === 'both' ? 'Both ⚡' : 'Email 📧')}
                           </span>
 
-                          {/* Open indicator */}
-                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold border ${email.opensCount > 0
+                          {/* Download indicator */}
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold border ${email.downloadsCount > 0
                               ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                               : 'bg-slate-50 text-slate-400 border-slate-200'
                             }`}>
-                            {email.opensCount > 0 ? 'Opened 👁️' : 'Sent'}
+                            {email.downloadsCount > 0 ? 'Downloaded 📥' : 'Sent'}
                           </span>
 
                           {/* Reply indicator */}
@@ -934,11 +908,11 @@ export default function EmailHubPage() {
                     {activeConversationEmail.channel === 'whatsapp' ? 'WA 📱' : (activeConversationEmail.channel === 'both' ? 'Both ⚡' : 'Email 📧')}
                   </span>
                   <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold border ${
-                    activeConversationEmail.opensCount > 0
+                    activeConversationEmail.downloadsCount > 0
                       ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                       : 'bg-slate-50 text-slate-400 border-slate-200'
                   }`}>
-                    {activeConversationEmail.opensCount > 0 ? `Opened (${activeConversationEmail.opensCount}x) 👁️` : 'Sent'}
+                    {activeConversationEmail.downloadsCount > 0 ? `Downloaded (${activeConversationEmail.downloadsCount}x) 📥` : 'Sent'}
                   </span>
                 </div>
               </div>

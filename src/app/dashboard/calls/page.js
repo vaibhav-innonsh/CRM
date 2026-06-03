@@ -46,6 +46,7 @@ export default function CallsPage() {
   const [callType, setCallType] = useState('Outbound');
   const [callDuration, setCallDuration] = useState(''); // in seconds
   const [callResult, setCallResult] = useState('Answered');
+  const [callInterest, setCallInterest] = useState('Interested'); // Gap 7: Follow-up interest result
   const [callTime, setCallTime] = useState('');
   const [notes, setNotes] = useState('');
   const [assignedTo, setAssignedTo] = useState('');
@@ -140,6 +141,7 @@ export default function CallsPage() {
       callType,
       callDuration: Number(callDuration) || 0,
       callResult,
+      callInterest,
       callTime: callTime || undefined,
       notes: notes.trim(),
       assignedTo: assignedTo || undefined,
@@ -194,6 +196,7 @@ export default function CallsPage() {
     setCallType('Outbound');
     setCallDuration('');
     setCallResult('Answered');
+    setCallInterest('Interested');
     setCallTime('');
     setNotes('');
     setAssignedTo('');
@@ -524,15 +527,12 @@ export default function CallsPage() {
                 </div>
               </div>
 
-              {/* Outcome Outcome */}
+              {/* Outcome & Interest */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Call Outcome</label>
-                  <select
-                    value={callResult}
-                    onChange={(e) => setCallResult(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-655 transition"
-                  >
+                  <select value={callResult} onChange={(e) => setCallResult(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-655 transition">
                     <option value="Answered">🟢 Answered</option>
                     <option value="No Answer">⚪ No Answer</option>
                     <option value="Busy">🔴 Busy Line</option>
@@ -540,13 +540,15 @@ export default function CallsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Call Date & Time</label>
-                  <input
-                    type="datetime-local"
-                    value={callTime}
-                    onChange={(e) => setCallTime(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-655 transition"
-                  />
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Interest Result 🎯</label>
+                  <select value={callInterest} onChange={(e) => setCallInterest(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-655 transition">
+                    <option value="Interested">✅ Interested</option>
+                    <option value="Not Interested">❌ Not Interested</option>
+                    <option value="Callback Requested">📞 Callback Requested</option>
+                    <option value="Escalated to Doctor">🏥 Escalated to Doctor</option>
+                    <option value="Follow-up Later">🕐 Follow-up Later</option>
+                  </select>
                 </div>
               </div>
 

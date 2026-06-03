@@ -22,6 +22,7 @@ export default function ProfilePage() {
   
   // Forms states
   const [name, setName] = useState('');
+  const [gstin, setGstin] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -48,6 +49,7 @@ export default function ProfilePage() {
         const data = await res.json();
         setUser(data.user);
         setName(data.user.name);
+        setGstin(data.user.gstin || '');
       }
     } catch (err) {
       console.error('Fetch profile details failed:', err);
@@ -74,7 +76,7 @@ export default function ProfilePage() {
       const res = await fetch('/api/auth/me', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name })
+        body: JSON.stringify({ name, gstin })
       });
       const data = await res.json();
       if (res.ok) {
@@ -263,6 +265,19 @@ export default function ProfilePage() {
                   className="w-full max-w-md px-3.5 py-2 text-xs font-bold bg-slate-50 hover:bg-slate-100/70 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200"
                 />
               </div>
+
+              {(user?.role === 'owner' || user?.role === 'sales_admin') && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-450 uppercase tracking-widest block font-mono">Company GSTIN</label>
+                  <input
+                    type="text"
+                    value={gstin}
+                    onChange={(e) => setGstin(e.target.value)}
+                    placeholder="E.g. 27AABCI4567K1Z4"
+                    className="w-full max-w-md px-3.5 py-2 text-xs font-bold bg-slate-50 hover:bg-slate-100/70 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200"
+                  />
+                </div>
+              )}
 
               <button
                 type="submit"

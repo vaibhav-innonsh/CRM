@@ -2,7 +2,7 @@ import connectToDatabase from '@/lib/db';
 import Team from '@/lib/models/Team';
 import { supabase } from '@/lib/supabaseClient';
 import { mapTeamToFrontend } from '@/lib/dbMapper';
-import { getUserFromRequest } from '@/lib/auth';
+import { getUserFromRequest, checkModuleAccess } from '@/lib/auth';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -13,6 +13,13 @@ export async function GET(req) {
     const decodedUser = getUserFromRequest(req);
     if (!decodedUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (!checkModuleAccess(decodedUser, 'teams')) {
+      return NextResponse.json(
+        { error: '🔒 This module is not enabled for your organization. Please upgrade your subscription.' },
+        { status: 403 }
+      );
     }
 
     if (decodedUser.role === 'sales_rep') {
@@ -26,6 +33,11 @@ export async function GET(req) {
       let queryBuilder = supabase
         .from('teams')
         .select('*, leader_details:users!leader(id, name, email)');
+
+      // STRICT MULTI-TENANT ISOLATION
+      if (decodedUser.orgId) {
+        queryBuilder = queryBuilder.eq('org_id', decodedUser.orgId);
+      }
 
       // HIERARCHICAL GATES: 
       // - Sales Manager strictly only views the teams they lead.
@@ -93,6 +105,13 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    if (!checkModuleAccess(decodedUser, 'teams')) {
+      return NextResponse.json(
+        { error: '🔒 This module is not enabled for your organization. Please upgrade your subscription.' },
+        { status: 403 }
+      );
+    }
+
     if (decodedUser.role === 'sales_rep') {
       return NextResponse.json(
         { error: 'Forbidden. Sales representatives cannot configure teams.' },
@@ -132,7 +151,8 @@ export async function POST(req) {
         leader: finalLeader,
         members: members || [],
         region: region ? region.trim() : 'General',
-        target_amount: targetAmount || 0
+        target_amount: targetAmount || 0,
+        org_id: decodedUser.orgId
       };
 
       const { data: newTeam, error: insertError } = await supabase

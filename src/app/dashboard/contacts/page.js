@@ -62,6 +62,12 @@ export default function ContactsPage() {
   
   const [formError, setFormError] = useState('');
 
+  // Org-wide customizations and standard field visibility
+  const [orgCustomFieldDefs, setOrgCustomFieldDefs] = useState([]);
+  const [hiddenStandardFields, setHiddenStandardFields] = useState([]);
+  const [customFieldsData, setCustomFieldsData] = useState({});
+  const [sector, setSector] = useState('');
+
   // Toast Helper
   const showToast = (text, type = 'success') => {
     setToastMessage({ text, type });
@@ -85,6 +91,25 @@ export default function ContactsPage() {
               const repsData = await repsRes.json();
               setSalesReps(repsData.users || []);
             }
+          }
+
+          // Fetch custom fields schema + standard visibility
+          const [cfRes, sfRes, suggRes] = await Promise.all([
+            fetch('/api/tenant/custom-fields?module=contacts'),
+            fetch('/api/tenant/standard-fields'),
+            fetch('/api/tenant/sector-suggestions?module=contacts')
+          ]);
+          if (cfRes.ok) {
+            const cfData = await cfRes.json();
+            setOrgCustomFieldDefs(cfData.fields || []);
+          }
+          if (sfRes.ok) {
+            const sfData = await sfRes.json();
+            setHiddenStandardFields(sfData.hiddenFields || []);
+          }
+          if (suggRes.ok) {
+            const suggData = await suggRes.json();
+            setSector(suggData.sector || 'General');
           }
         }
       } catch (err) {
@@ -156,7 +181,8 @@ export default function ContactsPage() {
       state: state.trim(),
       country: country.trim(),
       assignedTo: assignedTo || undefined,
-      status
+      status,
+      customData: customFieldsData
     };
 
     try {
@@ -201,7 +227,8 @@ export default function ContactsPage() {
       state: state.trim(),
       country: country.trim(),
       assignedTo: assignedTo || undefined,
-      status
+      status,
+      customData: customFieldsData
     };
 
     try {
@@ -262,6 +289,7 @@ export default function ContactsPage() {
     setAssignedTo('');
     setStatus('Active');
     setFormError('');
+    setCustomFieldsData({});
   };
 
   const populateEditForm = (contact) => {
@@ -270,7 +298,6 @@ export default function ContactsPage() {
     setCompany(contact.company || '');
     setDesignation(contact.designation || '');
     setEmail(contact.email || '');
-    Phone(contact.phone || '');
     setPhone(contact.phone || '');
     setWhatsapp(contact.whatsapp || '');
     setCity(contact.city || '');
@@ -279,6 +306,7 @@ export default function ContactsPage() {
     setAssignedTo(contact.assignedTo?._id || contact.assignedTo || '');
     setStatus(contact.status || 'Active');
     setFormError('');
+    setCustomFieldsData(contact.customData || {});
     setEditModalOpen(true);
   };
 
@@ -600,7 +628,7 @@ export default function ContactsPage() {
                     {selectedContact.status} Customers
                   </span>
                 </div>
-                {selectedContact.whatsapp && (
+                {selectedContact.whatsapp && !hiddenStandardFields.includes('contacts:whatsapp') && (
                   <button
                     onClick={() => triggerWhatsApp(selectedContact)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-450 text-white text-xs font-bold transition shadow-sm active:scale-95 cursor-pointer"
@@ -628,7 +656,7 @@ export default function ContactsPage() {
                       <span>{selectedContact.phone || 'No phone set'}</span>
                     </a>
                   </div>
-                  {selectedContact.designation && (
+                  {selectedContact.designation && !hiddenStandardFields.includes('contacts:designation') && (
                     <div className="space-y-1 col-span-2">
                       <span className="text-[10px] font-bold text-slate-400 uppercase block">Corporate Job Title</span>
                       <div className="flex items-center gap-1.5 text-xs text-slate-700 font-semibold mt-0.5">
@@ -641,13 +669,15 @@ export default function ContactsPage() {
 
                 {/* Location attributes */}
                 <div className="border-t border-slate-100 pt-3.5 grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Zonal address</span>
-                    <div className="flex items-center gap-1.5 text-xs text-slate-700 font-semibold mt-0.5">
-                      <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                      <span>{selectedContact.city ? `${selectedContact.city}, ${selectedContact.state || ''}` : 'India'}</span>
+                  {!hiddenStandardFields.includes('contacts:city') && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase block">Zonal address</span>
+                      <div className="flex items-center gap-1.5 text-xs text-slate-700 font-semibold mt-0.5">
+                        <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                        <span>{selectedContact.city ? `${selectedContact.city}, ${selectedContact.state || ''}` : 'India'}</span>
+                      </div>
                     </div>
-                  </div>
+                  )}
                   <div className="space-y-1">
                     <span className="text-[10px] font-bold text-slate-400 uppercase block">Manager attributed</span>
                     <div className="flex items-center gap-1.5 text-xs text-slate-700 font-semibold mt-0.5">
@@ -666,6 +696,25 @@ export default function ContactsPage() {
                   </div>
                 )}
               </div>
+
+              {/* Dynamic Org Custom Fields Box */}
+              {orgCustomFieldDefs.length > 0 && (
+                <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-sm space-y-4">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block border-b border-slate-100 pb-1.5">Industry Specifications ({sector})</span>
+                  <div className="grid grid-cols-2 gap-4">
+                    {orgCustomFieldDefs.map((field) => {
+                      const val = selectedContact.customData?.[field.field_key];
+                      if (val === undefined || val === '') return null;
+                      return (
+                        <div key={field.id} className="space-y-0.5">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase block">{field.field_label}</span>
+                          <span className="text-xs text-slate-700 font-extrabold block">{val}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Admin delete card */}
               {currentUser?.role !== 'sales_rep' && (
@@ -746,16 +795,18 @@ export default function ContactsPage() {
                     className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
                   />
                 </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Designation</label>
-                  <input
-                    type="text"
-                    placeholder="E.g. CTO / Tech Lead"
-                    value={designation}
-                    onChange={(e) => setDesignation(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
-                  />
-                </div>
+                {!hiddenStandardFields.includes('contacts:designation') && (
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Designation</label>
+                    <input
+                      type="text"
+                      placeholder="E.g. CTO / Tech Lead"
+                      value={designation}
+                      onChange={(e) => setDesignation(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-3 gap-4">
@@ -781,38 +832,99 @@ export default function ContactsPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">WhatsApp Mobile</label>
-                  <input
-                    type="text"
-                    placeholder="99999"
-                    value={whatsapp}
-                    onChange={(e) => setWhatsapp(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">City</label>
-                  <input
-                    type="text"
-                    placeholder="Pune"
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">State</label>
-                  <input
-                    type="text"
-                    placeholder="Maharashtra"
-                    value={state}
-                    onChange={(e) => setState(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
-                  />
-                </div>
+              <div className="grid grid-cols-2 gap-4">
+                {!hiddenStandardFields.includes('contacts:whatsapp') && (
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">WhatsApp Mobile</label>
+                    <input
+                      type="text"
+                      placeholder="99999"
+                      value={whatsapp}
+                      onChange={(e) => setWhatsapp(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
+                    />
+                  </div>
+                )}
+                {!hiddenStandardFields.includes('contacts:city') && (
+                  <div className="grid grid-cols-2 gap-3 col-span-2">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">City</label>
+                      <input
+                        type="text"
+                        placeholder="Pune"
+                        value={city}
+                        onChange={(e) => setCity(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">State</label>
+                      <input
+                        type="text"
+                        placeholder="Maharashtra"
+                        value={state}
+                        onChange={(e) => setState(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
+
+              {/* Dynamic Org Custom Fields Inputs */}
+              {orgCustomFieldDefs.length > 0 && (
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/60 space-y-4">
+                  <p className="text-[10px] font-black text-indigo-700 uppercase tracking-wider">Sector Specific Information ({sector})</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    {orgCustomFieldDefs.map((field) => (
+                      <div key={field.id} className="col-span-2">
+                        <label className="block text-[10px] font-bold text-slate-550 uppercase tracking-wider mb-1.5">
+                          {field.field_label} {field.is_required && '*'}
+                        </label>
+                        {field.field_type === 'dropdown' ? (
+                          <select
+                            value={customFieldsData[field.field_key] || ''}
+                            onChange={(e) => setCustomFieldsData(prev => ({ ...prev, [field.field_key]: e.target.value }))}
+                            required={field.is_required}
+                            className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
+                          >
+                            <option value="">Select option</option>
+                            {(field.options || []).map(opt => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                          </select>
+                        ) : field.field_type === 'boolean' ? (
+                          <select
+                            value={customFieldsData[field.field_key] || ''}
+                            onChange={(e) => setCustomFieldsData(prev => ({ ...prev, [field.field_key]: e.target.value }))}
+                            required={field.is_required}
+                            className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
+                          >
+                            <option value="">Select option</option>
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>
+                          </select>
+                        ) : field.field_type === 'textarea' ? (
+                          <textarea
+                            value={customFieldsData[field.field_key] || ''}
+                            onChange={(e) => setCustomFieldsData(prev => ({ ...prev, [field.field_key]: e.target.value }))}
+                            required={field.is_required}
+                            className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition min-h-[60px]"
+                          />
+                        ) : (
+                          <input
+                            type={field.field_type === 'number' ? 'number' : field.field_type === 'date' ? 'date' : 'text'}
+                            value={customFieldsData[field.field_key] || ''}
+                            onChange={(e) => setCustomFieldsData(prev => ({ ...prev, [field.field_key]: e.target.value }))}
+                            required={field.is_required}
+                            className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 {(currentUser?.role === 'owner' || currentUser?.role === 'sales_admin') && (
@@ -920,15 +1032,17 @@ export default function ContactsPage() {
                     className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
                   />
                 </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Designation</label>
-                  <input
-                    type="text"
-                    value={designation}
-                    onChange={(e) => setDesignation(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
-                  />
-                </div>
+                {!hiddenStandardFields.includes('contacts:designation') && (
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Designation</label>
+                    <input
+                      type="text"
+                      value={designation}
+                      onChange={(e) => setDesignation(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-3 gap-4">
@@ -952,35 +1066,96 @@ export default function ContactsPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">WhatsApp Mobile</label>
-                  <input
-                    type="text"
-                    value={whatsapp}
-                    onChange={(e) => setWhatsapp(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">City</label>
-                  <input
-                    type="text"
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">State</label>
-                  <input
-                    type="text"
-                    value={state}
-                    onChange={(e) => setState(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
-                  />
-                </div>
+              <div className="grid grid-cols-2 gap-4">
+                {!hiddenStandardFields.includes('contacts:whatsapp') && (
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">WhatsApp Mobile</label>
+                    <input
+                      type="text"
+                      value={whatsapp}
+                      onChange={(e) => setWhatsapp(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
+                    />
+                  </div>
+                )}
+                {!hiddenStandardFields.includes('contacts:city') && (
+                  <div className="grid grid-cols-2 gap-3 col-span-2">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">City</label>
+                      <input
+                        type="text"
+                        value={city}
+                        onChange={(e) => setCity(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">State</label>
+                      <input
+                        type="text"
+                        value={state}
+                        onChange={(e) => setState(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
+
+              {/* Dynamic Org Custom Fields Inputs */}
+              {orgCustomFieldDefs.length > 0 && (
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/60 space-y-4">
+                  <p className="text-[10px] font-black text-indigo-700 uppercase tracking-wider">Sector Specific Information ({sector})</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    {orgCustomFieldDefs.map((field) => (
+                      <div key={field.id} className="col-span-2">
+                        <label className="block text-[10px] font-bold text-slate-550 uppercase tracking-wider mb-1.5">
+                          {field.field_label} {field.is_required && '*'}
+                        </label>
+                        {field.field_type === 'dropdown' ? (
+                          <select
+                            value={customFieldsData[field.field_key] || ''}
+                            onChange={(e) => setCustomFieldsData(prev => ({ ...prev, [field.field_key]: e.target.value }))}
+                            required={field.is_required}
+                            className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
+                          >
+                            <option value="">Select option</option>
+                            {(field.options || []).map(opt => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                          </select>
+                        ) : field.field_type === 'boolean' ? (
+                          <select
+                            value={customFieldsData[field.field_key] || ''}
+                            onChange={(e) => setCustomFieldsData(prev => ({ ...prev, [field.field_key]: e.target.value }))}
+                            required={field.is_required}
+                            className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
+                          >
+                            <option value="">Select option</option>
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>
+                          </select>
+                        ) : field.field_type === 'textarea' ? (
+                          <textarea
+                            value={customFieldsData[field.field_key] || ''}
+                            onChange={(e) => setCustomFieldsData(prev => ({ ...prev, [field.field_key]: e.target.value }))}
+                            required={field.is_required}
+                            className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition min-h-[60px]"
+                          />
+                        ) : (
+                          <input
+                            type={field.field_type === 'number' ? 'number' : field.field_type === 'date' ? 'date' : 'text'}
+                            value={customFieldsData[field.field_key] || ''}
+                            onChange={(e) => setCustomFieldsData(prev => ({ ...prev, [field.field_key]: e.target.value }))}
+                            required={field.is_required}
+                            className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs text-slate-800 transition"
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 {(currentUser?.role === 'owner' || currentUser?.role === 'sales_admin') && (
