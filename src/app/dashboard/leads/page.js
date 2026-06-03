@@ -37,6 +37,23 @@ import {
   Edit
 } from 'lucide-react';
 
+// Helper to safely parse Postgres date strings in strict browsers (like Safari)
+const safeNewDate = (dateVal) => {
+  if (!dateVal) return new Date();
+  let dateStr = String(dateVal);
+  if (dateStr.includes(' ') && !dateStr.includes('T')) {
+    dateStr = dateStr.replace(' ', 'T');
+  }
+  return new Date(dateStr);
+};
+
+// Helper to convert local datetime-local value (YYYY-MM-DDTHH:MM) to UTC ISO string before saving to database
+const localToUTCISO = (localTimeStr) => {
+  if (!localTimeStr) return null;
+  const date = new Date(localTimeStr);
+  return isNaN(date.getTime()) ? null : date.toISOString();
+};
+
 export default function LeadsPage() {
   // Page core states
   const [leads, setLeads] = useState([]);
@@ -286,7 +303,7 @@ export default function LeadsPage() {
       requirements: requirements.trim(),
       interestedProduct,
       followUpType,
-      nextFollowUpDate: nextFollowUpDate || null,
+      nextFollowUpDate: localToUTCISO(nextFollowUpDate),
       customFields,
       autoAssign,
       custom_data: orgCustomFieldValues,
@@ -482,7 +499,7 @@ export default function LeadsPage() {
     // Format nextFollowUpDate beautifully for datetime-local input YYYY-MM-DDTHH:MM
     if (lead.nextFollowUpDate) {
       try {
-        const dateObj = new Date(lead.nextFollowUpDate);
+        const dateObj = safeNewDate(lead.nextFollowUpDate);
         // Correct time offset adjustment for local time
         const offset = dateObj.getTimezoneOffset() * 60000;
         const localISOTime = (new Date(dateObj.getTime() - offset)).toISOString().slice(0, 16);
@@ -530,7 +547,7 @@ export default function LeadsPage() {
       requirements: editLeadRequirements.trim(),
       interestedProduct: editLeadInterestedProduct,
       followUpType: editLeadFollowUpType,
-      nextFollowUpDate: editLeadNextFollowUpDate || null,
+      nextFollowUpDate: localToUTCISO(editLeadNextFollowUpDate),
       customFields: editLeadCustomFields,
       custom_data: editLeadCustomData,
     };
@@ -710,7 +727,7 @@ export default function LeadsPage() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    const followUp = new Date(lead.nextFollowUpDate);
+    const followUp = safeNewDate(lead.nextFollowUpDate);
     followUp.setHours(0, 0, 0, 0);
     
     if (followUp < today) {
@@ -725,7 +742,7 @@ export default function LeadsPage() {
   const isInactiveLead = (lead) => {
     if (lead.status === 'Qualified' || lead.status === 'Lost') return false;
     const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000;
-    const lastUpdate = new Date(lead.updatedAt).getTime();
+    const lastUpdate = safeNewDate(lead.updatedAt).getTime();
     return (Date.now() - lastUpdate) > sevenDaysInMs;
   };
 
@@ -783,8 +800,8 @@ export default function LeadsPage() {
       `"${l.lostReason || ''}"`,
       l.source,
       l.annualRevenue || 0,
-      l.nextFollowUpDate ? new Date(l.nextFollowUpDate).toLocaleString() : 'Not Scheduled',
-      new Date(l.createdAt).toLocaleDateString()
+      l.nextFollowUpDate ? safeNewDate(l.nextFollowUpDate).toLocaleString() : 'Not Scheduled',
+      safeNewDate(l.createdAt).toLocaleDateString()
     ]);
 
     // Build CSV content
@@ -1144,7 +1161,7 @@ export default function LeadsPage() {
                   const followUpAlert = getFollowUpStatus(lead);
                   const isSlipping = isInactiveLead(lead);
                   const latestNote = lead.notes && lead.notes.length > 0
-                    ? [...lead.notes].sort((a, b) => (new Date(b.createdAt || 0).getTime() || 0) - (new Date(a.createdAt || 0).getTime() || 0))[0]
+                    ? [...lead.notes].sort((a, b) => (safeNewDate(b.createdAt || 0).getTime() || 0) - (safeNewDate(a.createdAt || 0).getTime() || 0))[0]
                     : null;
 
                   return (
@@ -1244,7 +1261,7 @@ export default function LeadsPage() {
                                 {latestNote.text}
                               </span>
                               <span className="text-[9px] text-slate-400 font-semibold">
-                                {latestNote.createdAt ? new Date(latestNote.createdAt).toLocaleDateString('en-IN', {
+                                {latestNote.createdAt ? safeNewDate(latestNote.createdAt).toLocaleDateString('en-IN', {
                                   day: '2-digit',
                                   month: 'short',
                                   hour: '2-digit',
@@ -1599,7 +1616,7 @@ export default function LeadsPage() {
                       <span className="text-[10px] font-bold text-amber-600 uppercase block">Target Next Follow-Up Schedule</span>
                       <div className="flex items-center gap-1.5 text-xs text-amber-800 font-extrabold mt-1">
                         <Calendar className="h-4 w-4 text-amber-500" />
-                        <span>{new Date(selectedLead.nextFollowUpDate).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                        <span>{safeNewDate(selectedLead.nextFollowUpDate).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</span>
                       </div>
                     </div>
                   </div>
@@ -1773,7 +1790,7 @@ export default function LeadsPage() {
                           <div className="flex items-center gap-2 text-[10px] text-slate-400 pt-1.5 border-t border-slate-100 font-semibold">
                             <span className="text-slate-500">{note.createdByName}</span>
                             <span>•</span>
-                            <span>{new Date(note.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                            <span>{safeNewDate(note.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</span>
                           </div>
                         </div>
                       </div>
